@@ -3,10 +3,13 @@ from flask import Flask
 from flask_restful import Api, Resource
 from flask_migrate import Migrate
 from flask_cors import CORS
+import os
 
 app = Flask(__name__)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///MoneyTransfer.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+# postgresql://moneytransferapp_user:7lX9VybTLSDTgeecUx9qN9anijeIcRci@dpg-cslqo6i3esus73c9jhv0-a.oregon-postgres.render.com/moneytransferapp
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.json.compact = False
 
