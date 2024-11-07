@@ -19,6 +19,7 @@ jobs:
 
       - name: Install requirements
         run: |
+          cd server
           pip install -r requirements.txt
 
       - name: Run app
