@@ -1,0 +1,32 @@
+name: Basic CI Workflow
+
+on:
+  push:
+    branches:
+      - 'main'  # Trigger when code is pushed to the 'main' branch 
+  pull_request:
+    branches:
+      - main  # Trigger on pull requests targeting the 'main' branch
+  workflow_dispatch:  # Trigger manually via GitHub UI
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]  # Specify the latest versions of each OS
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout
+
+      - name: Set up Node.js
+        uses: actions/setup-node
+        with:
+          node-version: '16'  # Specify the version of Node.js you are using
+
+      - name: Install dependencies
+        run: npm install  # Adjust for your dependency manager, e.g., `yarn install`
+
+      - name: Run tests
+        run: npm test  # Or `yarn test`, depending on your test setup
