@@ -17,12 +17,10 @@ jobs:
       - name: Checkout code
         run: git clone https://github.com/Ngecha/Money-transfer-app.git
 
-      - name: Install Node.js and dependencies
+      - name: Install requirements
         run: |
-          curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
-          sudo apt-get install -y nodejs
-          cd repository
-          npm install
+          cd server
+          pip install -r requirements.txt
 
-      - name: Run tests
-        run: npm test
+      - name: Run app
+        run: python3 app.py
