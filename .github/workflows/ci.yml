@@ -1,0 +1,26 @@
+name: Basic CI Workflow
+
+on:
+  push:
+    branches:
+      - 'Development'  # Trigger when code is pushed to the 'Development' branch
+  pull_request:
+    branches:
+      - Development  # Trigger on pull requests targeting the 'Development' branch
+  workflow_dispatch:  # Trigger manually via GitHub UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install requirements
+        run: |
+          cd server
+          pip install -r requirements.txt
+
+      - name: Run app
+        run: flask run
