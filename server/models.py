@@ -1,9 +1,9 @@
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 import bcrypt
-import db
+from db import db
 
-class User(db.model):
+class User(db.Model):
     __tablename__= 'users'
 
     user_id = db.Column(db.Integer, primary_key=True)
