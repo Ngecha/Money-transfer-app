@@ -11,22 +11,18 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]  # Specify the latest versions of each OS
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout
+        run: git clone https://github.com/username/repository.git
 
-      - name: Set up Node.js
-        uses: actions/setup-node
-        with:
-          node-version: '16'  # Specify the version of Node.js you are using
-
-      - name: Install dependencies
-        run: npm install  # Adjust for your dependency manager, e.g., `yarn install`
+      - name: Install Node.js and dependencies
+        run: |
+          curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
+          sudo apt-get install -y nodejs
+          cd repository
+          npm install
 
       - name: Run tests
-        run: npm test  # Or `yarn test`, depending on your test setup
+        run: npm test
