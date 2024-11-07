@@ -18,8 +18,7 @@ jobs:
         run: git clone https://github.com/Ngecha/Money-transfer-app.git
 
       - name: Install requirements
-        run: |
-          cd server
+        run: cd server
           pip install -r requirements.txt
 
       - name: Run app
