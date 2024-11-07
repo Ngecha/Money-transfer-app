@@ -3,10 +3,10 @@ name: Basic CI Workflow
 on:
   push:
     branches:
-      - 'main'  # Trigger when code is pushed to the 'main' branch 
+      - 'Development'  # Trigger when code is pushed to the 'main' branch 
   pull_request:
     branches:
-      - main  # Trigger on pull requests targeting the 'main' branch
+      - Development  # Trigger on pull requests targeting the 'main' branch
   workflow_dispatch:  # Trigger manually via GitHub UI
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        run: git clone https://github.com/username/repository.git
+        run: git clone https://github.com/Ngecha/Money-transfer-app.git
 
       - name: Install Node.js and dependencies
         run: |
