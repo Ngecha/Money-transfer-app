@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from flask_migrate import Migrate
 import bcrypt
 from db import db
 
@@ -12,8 +12,19 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # To disable modification 
 
 #initialize extentions with the app
 db.init_app(app)
+migrate = Migrate(app, db)
 
 from models import User, Wallet, Transaction, Beneficiary, TransactionSummary, Analytics
+
+
+# Utility function to hash password
+def hash_password(password):
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+# Utility function to verify password
+def verify_password(password, hashed):
+    return bcrypt.checkpw(password.encode('utf-8'), hashed)
+
 # User Registration Route
 
 @app.route('/register', methods=['POST'])
@@ -22,18 +33,27 @@ def register():
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
+    profile_image = data.get('profile_image')
+    
+    # Validate the input data
+    if not username or not email or not password:
+        return jsonify({"error": "All fields are required!"}), 400
 
     # Check if user already exists
     if User.query.filter_by(username=username).first() or User.query.filter_by(email=email).first():
-        return jsonify({"error": "User already exists!"}), 400
+        return jsonify({"error": "User already exists!"}), 409
 
-    # Create new user
-    new_user = User(username=username, email=email)
-    new_user.set_password(password)
+    # Hash the password
+    hashed_password = hash_password(password)
+    # Create a new user and a wallet for the user
+    new_user = User(username=username, email=email, password=hashed_password, profile_image=profile_image)
+    new_wallet = Wallet(owner=new_user)
     db.session.add(new_user)
+    db.session.add(new_wallet)
     db.session.commit()
-    return jsonify({"message": "User created successfully!"}), 201
 
+    return jsonify({"message": "User registered successfully!"}), 201
+  
 # User Login Route 
 @app.route('/login', methods=['POST'])
 def login():
@@ -65,10 +85,14 @@ def create_transaction():
     amount = data.get('amount')
     description = data.get('description')
 
+    # Validate input data
+    if not sender_wallet_id or not receiver_wallet_id or not amount:
+        return jsonify({"error": "Missing transaction details!"}), 400
+
     #Transaction fee rate
     transaction_fee_rate = 0.02
     transaction_fee = amount * transaction_fee_rate
-    total_deduction = amount + transaction_fee  # Total amount to deduct from the sender
+    total_deduction = amount + transaction_fee 
 
     # Retrieve wallets 
     sender_wallet = Wallet.query.get(sender_wallet_id)
@@ -86,19 +110,20 @@ def create_transaction():
         sender_wallet_id=sender_wallet.wallet_id,
         receiver_wallet_id=receiver_wallet.wallet_id,
         amount=amount,
-        description=description,
-        fee=transaction_fee
+        transaction_fee=transaction_fee,
+        description=description
     )
 
     # Update wallet balances
-    sender_wallet.balance -= amount
+    sender_wallet.balance -= total_deduction
     receiver_wallet.balance += amount
 
-    # Commit changes to DB 
+    # Commit changes to DB
     db.session.add(transaction)
     db.session.commit()
 
     return jsonify(transaction.to_dict()), 201
+       
 
 # Route to get all transactions of a user 
 @app.route('/transactions', methods=['GET'])
@@ -106,9 +131,14 @@ def get_transactions():
     user_id = request.args.get('user_id')
     user = User.query.get(user_id)
     if user:
-        transactions = Transaction.query.filter((Transaction.sender_wallet_id == user.wallet.wallet_id) |
-                                                 (Transaction.receiver_wallet_id == user.wallet.wallet_id)).all()
-        return jsonify([transaction.to_dict() for transaction in transactions]), 200
+        if user.wallet:  # Ensure the user has a wallet
+            transactions = Transaction.query.filter(
+                (Transaction.sender_wallet_id == user.wallet.wallet_id) |
+                (Transaction.receiver_wallet_id == user.wallet.wallet_id)
+            ).all()
+            return jsonify([transaction.to_dict() for transaction in transactions]), 200
+        else:
+            return jsonify({"error": "User does not have an associated wallet!"}), 404
     return jsonify({"error": "User not found!"}), 404
 
 # Route to add a beneficiary

@@ -10,6 +10,7 @@ class User(db.Model):
     username = db.Column(db.String(50), nullable=False, unique=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
     password_hash = db.Column(db.String(128), nullable=False)
+    profile_image = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(20), nullable=False, default='user')  
     status = db.Column(db.String(20), default='active')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -36,6 +37,7 @@ class User(db.Model):
             'email': self.email,
             'role': self.role,
             'status': self.status,
+            'profile_image': self.profile_image,
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
@@ -47,6 +49,7 @@ class Wallet(db.Model):
 
     wallet_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
+    wallet_name = db.Column(db.String(50), nullable=True)
     balance = db.Column(db.Float, default=0.0)
     currency = db.Column(db.String(10), default='USD')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -60,6 +63,7 @@ class Wallet(db.Model):
         return {
             'wallet_id': self.wallet_id,
             'user_id': self.user_id,
+            'wallet_name': self.wallet_name,
             'balance': self.balance,
             'currency': self.currency,
             'created_at': self.created_at,
@@ -93,6 +97,7 @@ class Transaction(db.Model):
     transaction_id = db.Column(db.Integer, primary_key=True)
     sender_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=False)
     receiver_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     transaction_date = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(20), default='pending')
@@ -104,6 +109,7 @@ class Transaction(db.Model):
             'transaction_id': self.transaction_id,
             'sender_wallet_id': self.sender_wallet_id,
             'receiver_wallet_id': self.receiver_wallet_id,
+            'user_id': self.user_id,
             'amount': self.amount,
             'transaction_date': self.transaction_date,
             'status': self.status,
@@ -141,7 +147,6 @@ class Analytics(db.Model):
     transaction_count = db.Column(db.Integer)
     total_spent = db.Column(db.Float)
     total_received = db.Column(db.Float)
-    profit_generated = db.Column(db.Float)
     period = db.Column(db.String(50))  # e.g., 'monthly', 'quarterly'
 
     def to_dict(self):
@@ -151,7 +156,6 @@ class Analytics(db.Model):
             'transaction_count': self.transaction_count,
             'total_spent': self.total_spent,
             'total_received': self.total_received,
-            'profit_generated': self.profit_generated,
             'period': self.period
         }
 
