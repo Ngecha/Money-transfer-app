@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
 import bcrypt
-from app import db
+from db import db
 
 class User(db.Model):
     __tablename__= 'users'
@@ -9,7 +9,7 @@ class User(db.Model):
     user_id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password = db.Column(db.String(128), nullable=False)
     profile_image = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(20), nullable=False, default='user')  
     status = db.Column(db.String(20), default='active')
