@@ -1,33 +1,63 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
-import bcrypt
-import db
+from werkzeug.security import generate_password_hash, check_password_hash
+from db import db
 
-class User(db.model):
+class User(db.Model):
     __tablename__= 'users'
 
     user_id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password = db.Column(db.String(128), nullable=False)
+    profile_image = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(20), nullable=False, default='user')  
     status = db.Column(db.String(20), default='active')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
 
+    reset_token = db.Column(db.String(128), nullable=True)
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)
      
     # Relationships to other models with cascade options
     wallet = db.relationship('Wallet', backref='owner', uselist=False, cascade="all, delete-orphan")
     transactions = db.relationship('Transaction', backref='user', lazy=True, cascade="all, delete-orphan")
     beneficiaries = db.relationship('Beneficiary', backref='user', lazy=True, cascade="all, delete-orphan")
 
+    def __init__(self, username, email, password, profile_image=None):
+        self.username = username
+        self.email = email
+        self.profile_image = profile_image
+        self.set_password(password)
+    
     # Set password with bcrypt hashing
     def set_password(self, password):
-        self.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    
+       self.password = generate_password_hash(password) 
     # Check password against hashed version
     def check_password(self, password):
-        return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
+        return check_password_hash(self.password, password)
+    # Update profile
+    def update_profile(self, username=None, email=None, profile_image=None):
+        if username:
+            self.username = username
+        if email:
+            self.email = email
+        if profile_image:
+            self.profile_image = profile_image
+    
+     # Set password reset token
+    def set_reset_token(self, token, expiry_hours):
+        if isinstance(token, bytes):
+            self.reset_token = token.decode('utf-8')  # decode bytes to string
+        else:
+            self.reset_token = token
+        self.reset_token_expiry = datetime.utcnow() + timedelta(hours=expiry_hours)
+
+    # Clear password reset token after use 
+    def clear_reset_token(self):
+        self.reset_token = None
+        self.reset_token_expiry = None
+
 
     def to_dict(self):
         return {
@@ -36,6 +66,7 @@ class User(db.model):
             'email': self.email,
             'role': self.role,
             'status': self.status,
+            'profile_image': self.profile_image,
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
@@ -47,6 +78,7 @@ class Wallet(db.Model):
 
     wallet_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
+    wallet_name = db.Column(db.String(50), nullable=True)
     balance = db.Column(db.Float, default=0.0)
     currency = db.Column(db.String(10), default='USD')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -55,11 +87,26 @@ class Wallet(db.Model):
     # Transactions associated with this wallet
     sent_transactions = db.relationship('Transaction', foreign_keys='Transaction.sender_wallet_id', backref='sender_wallet', cascade="all, delete-orphan")
     received_transactions = db.relationship('Transaction', foreign_keys='Transaction.receiver_wallet_id', backref='receiver_wallet', cascade="all, delete-orphan")
+    
+    # Fund wallet method
+    def fund_wallet(self, amount):
+        if amount > 0:
+            self.balance += amount
+            return True
+        raise ValueError("Amount must be greater than zero")
+
+    # Withdraw from wallet
+    def withdraw(self, amount):
+        if amount > 0 and self.balance >= amount:
+            self.balance -= amount
+            return True
+        raise ValueError("Insufficient balance or invalid amount")
 
     def to_dict(self):
         return {
             'wallet_id': self.wallet_id,
             'user_id': self.user_id,
+            'wallet_name': self.wallet_name,
             'balance': self.balance,
             'currency': self.currency,
             'created_at': self.created_at,
@@ -75,6 +122,11 @@ class Beneficiary(db.Model):
     beneficiary_name = db.Column(db.String(100), nullable=False)
     beneficiary_account = db.Column(db.String(100), nullable=False)
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+
+    # soft delete
+    def soft_delete(self):
+        self.is_active = False
 
     def to_dict(self):
         return {
@@ -82,7 +134,8 @@ class Beneficiary(db.Model):
             'user_id': self.user_id,
             'beneficiary_name': self.beneficiary_name,
             'beneficiary_account': self.beneficiary_account,
-            'added_at': self.added_at
+            'added_at': self.added_at,
+            'is_active': self.is_active
         }  
     
 
@@ -93,22 +146,30 @@ class Transaction(db.Model):
     transaction_id = db.Column(db.Integer, primary_key=True)
     sender_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=False)
     receiver_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     transaction_date = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(20), default='pending')
     transaction_fee = db.Column(db.Float, nullable=True)
     description = db.Column(db.String(200))
+    is_reversed = db.Column(db.Boolean, default=False)
+
+    # Reverse transaction
+    def reverse_transaction(self):
+        self.is_reversed = True
 
     def to_dict(self):
         return {
             'transaction_id': self.transaction_id,
             'sender_wallet_id': self.sender_wallet_id,
             'receiver_wallet_id': self.receiver_wallet_id,
+            'user_id': self.user_id,
             'amount': self.amount,
             'transaction_date': self.transaction_date,
             'status': self.status,
             'transaction_fee': self.transaction_fee,
-            'description': self.description
+            'description': self.description,
+            'is_reversed': self.is_reversed
         }
     
 
@@ -141,7 +202,6 @@ class Analytics(db.Model):
     transaction_count = db.Column(db.Integer)
     total_spent = db.Column(db.Float)
     total_received = db.Column(db.Float)
-    profit_generated = db.Column(db.Float)
     period = db.Column(db.String(50))  # e.g., 'monthly', 'quarterly'
 
     def to_dict(self):
@@ -151,8 +211,6 @@ class Analytics(db.Model):
             'transaction_count': self.transaction_count,
             'total_spent': self.total_spent,
             'total_received': self.total_received,
-            'profit_generated': self.profit_generated,
             'period': self.period
         }
-
 
