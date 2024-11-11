@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
-import bcrypt
+from werkzeug.security import generate_password_hash, check_password_hash
 from db import db
 
 class User(db.Model):
@@ -32,12 +32,10 @@ class User(db.Model):
     
     # Set password with bcrypt hashing
     def set_password(self, password):
-        self.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    
+       self.password = generate_password_hash(password) 
     # Check password against hashed version
     def check_password(self, password):
-        return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
-    
+        return check_password_hash(self.password, password)
     # Update profile
     def update_profile(self, username=None, email=None, profile_image=None):
         if username:
@@ -47,9 +45,12 @@ class User(db.Model):
         if profile_image:
             self.profile_image = profile_image
     
-    # Set password reset token
-    def set_reset_token(self, token, expiry):
-        self.reset_token = token
+     # Set password reset token
+    def set_reset_token(self, token, expiry_hours):
+        if isinstance(token, bytes):
+            self.reset_token = token.decode('utf-8')  # decode bytes to string
+        else:
+            self.reset_token = token
         self.reset_token_expiry = datetime.utcnow() + timedelta(hours=expiry_hours)
 
     # Clear password reset token after use 

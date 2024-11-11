@@ -1,8 +1,8 @@
-"""Added user_id foreign key to Transaction model
+"""Initial migration
 
-Revision ID: 50227960cde4
+Revision ID: 7ca79ecdfa0a
 Revises: 
-Create Date: 2024-11-08 16:26:13.191458
+Create Date: 2024-11-11 16:42:45.899703
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '50227960cde4'
+revision = '7ca79ecdfa0a'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -30,11 +30,14 @@ def upgrade():
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('username', sa.String(length=50), nullable=False),
     sa.Column('email', sa.String(length=120), nullable=False),
-    sa.Column('password_hash', sa.String(length=128), nullable=False),
+    sa.Column('password', sa.String(length=128), nullable=False),
+    sa.Column('profile_image', sa.String(length=255), nullable=True),
     sa.Column('role', sa.String(length=20), nullable=False),
     sa.Column('status', sa.String(length=20), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('reset_token', sa.String(length=128), nullable=True),
+    sa.Column('reset_token_expiry', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('user_id'),
     sa.UniqueConstraint('email'),
     sa.UniqueConstraint('username')
@@ -55,12 +58,14 @@ def upgrade():
     sa.Column('beneficiary_name', sa.String(length=100), nullable=False),
     sa.Column('beneficiary_account', sa.String(length=100), nullable=False),
     sa.Column('added_at', sa.DateTime(), nullable=True),
+    sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.user_id'], ),
     sa.PrimaryKeyConstraint('beneficiary_id')
     )
     op.create_table('wallets',
     sa.Column('wallet_id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('wallet_name', sa.String(length=50), nullable=True),
     sa.Column('balance', sa.Float(), nullable=True),
     sa.Column('currency', sa.String(length=10), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
@@ -78,6 +83,7 @@ def upgrade():
     sa.Column('status', sa.String(length=20), nullable=True),
     sa.Column('transaction_fee', sa.Float(), nullable=True),
     sa.Column('description', sa.String(length=200), nullable=True),
+    sa.Column('is_reversed', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['receiver_wallet_id'], ['wallets.wallet_id'], ),
     sa.ForeignKeyConstraint(['sender_wallet_id'], ['wallets.wallet_id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.user_id'], ),

@@ -69,8 +69,8 @@ def register():
         return jsonify({"error": "Email already exists!"}), 409
 
      # Create a new user and a wallet for the user
-    hashed_password = hash_password(password)
-    new_user = User(username=username, email=email, profile_image=profile_image)
+    
+    new_user = User(username=username, email=email, password=password, profile_image=profile_image)
     db.session.add(new_user)
     db.session.commit()
 
@@ -92,7 +92,7 @@ def login():
     password = data.get('password')
 
     user = User.query.filter_by(email=email).first()
-    if user and verify_password(password, user.password):
+    if user and user.check_password(password):
         session['user_id'] = user.user_id
         return jsonify({'message': 'Login successful', 'user': user.to_dict()}), 200
     return jsonify({'message': 'Invalid email or password'}), 401
