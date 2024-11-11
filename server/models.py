@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
 import bcrypt
-from db import db
+from app import db
 
 class User(db.Model):
     __tablename__= 'users'
@@ -16,12 +16,20 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
 
+    reset_token = db.Column(db.String(128), nullable=True)
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)
      
     # Relationships to other models with cascade options
     wallet = db.relationship('Wallet', backref='owner', uselist=False, cascade="all, delete-orphan")
     transactions = db.relationship('Transaction', backref='user', lazy=True, cascade="all, delete-orphan")
     beneficiaries = db.relationship('Beneficiary', backref='user', lazy=True, cascade="all, delete-orphan")
 
+    def __init__(self, username, email, password, profile_image=None):
+        self.username = username
+        self.email = email
+        self.profile_image = profile_image
+        self.set_password(password)
+    
     # Set password with bcrypt hashing
     def set_password(self, password):
         self.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -29,6 +37,26 @@ class User(db.Model):
     # Check password against hashed version
     def check_password(self, password):
         return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
+    
+    # Update profile
+    def update_profile(self, username=None, email=None, profile_image=None):
+        if username:
+            self.username = username
+        if email:
+            self.email = email
+        if profile_image:
+            self.profile_image = profile_image
+    
+    # Set password reset token
+    def set_reset_token(self, token, expiry):
+        self.reset_token = token
+        self.reset_token_expiry = datetime.utcnow() + timedelta(hours=expiry_hours)
+
+    # Clear password reset token after use 
+    def clear_reset_token(self):
+        self.reset_token = None
+        self.reset_token_expiry = None
+
 
     def to_dict(self):
         return {
@@ -58,6 +86,20 @@ class Wallet(db.Model):
     # Transactions associated with this wallet
     sent_transactions = db.relationship('Transaction', foreign_keys='Transaction.sender_wallet_id', backref='sender_wallet', cascade="all, delete-orphan")
     received_transactions = db.relationship('Transaction', foreign_keys='Transaction.receiver_wallet_id', backref='receiver_wallet', cascade="all, delete-orphan")
+    
+    # Fund wallet method
+    def fund_wallet(self, amount):
+        if amount > 0:
+            self.balance += amount
+            return True
+        raise ValueError("Amount must be greater than zero")
+
+    # Withdraw from wallet
+    def withdraw(self, amount):
+        if amount > 0 and self.balance >= amount:
+            self.balance -= amount
+            return True
+        raise ValueError("Insufficient balance or invalid amount")
 
     def to_dict(self):
         return {
@@ -79,6 +121,11 @@ class Beneficiary(db.Model):
     beneficiary_name = db.Column(db.String(100), nullable=False)
     beneficiary_account = db.Column(db.String(100), nullable=False)
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+
+    # soft delete
+    def soft_delete(self):
+        self.is_active = False
 
     def to_dict(self):
         return {
@@ -86,7 +133,8 @@ class Beneficiary(db.Model):
             'user_id': self.user_id,
             'beneficiary_name': self.beneficiary_name,
             'beneficiary_account': self.beneficiary_account,
-            'added_at': self.added_at
+            'added_at': self.added_at,
+            'is_active': self.is_active
         }  
     
 
@@ -103,6 +151,11 @@ class Transaction(db.Model):
     status = db.Column(db.String(20), default='pending')
     transaction_fee = db.Column(db.Float, nullable=True)
     description = db.Column(db.String(200))
+    is_reversed = db.Column(db.Boolean, default=False)
+
+    # Reverse transaction
+    def reverse_transaction(self):
+        self.is_reversed = True
 
     def to_dict(self):
         return {
@@ -114,7 +167,8 @@ class Transaction(db.Model):
             'transaction_date': self.transaction_date,
             'status': self.status,
             'transaction_fee': self.transaction_fee,
-            'description': self.description
+            'description': self.description,
+            'is_reversed': self.is_reversed
         }
     
 
@@ -158,5 +212,4 @@ class Analytics(db.Model):
             'total_received': self.total_received,
             'period': self.period
         }
-
 
