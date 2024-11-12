@@ -384,17 +384,22 @@ def add_beneficiary():
         return jsonify({'message': 'Unauthorized'}), 401
 
     data = request.get_json()
-    user_id = data.get('user_id')
-    beneficiary_name = data.get('beneficiary_name')
-    beneficiary_account = data.get('beneficiary_account')
+    beneficiary_email = data.get('beneficiary_email')
 
+    # Check if beneficiary email exists in the system
+    beneficiary = User.query.filter_by(email=beneficiary_email).first()
+    if not beneficiary:
+        return jsonify({'message': 'Beneficiary email not found'}), 404
+    
+     # Create a new beneficiary record
     new_beneficiary = Beneficiary(
         user_id=user.user_id,
-        beneficiary_name=beneficiary_name,
-        beneficiary_account=beneficiary_account
+        beneficiary_email=beneficiary_email
     )
+   
     db.session.add(new_beneficiary)
     db.session.commit()
+
     return jsonify({'message': 'Beneficiary added', 'beneficiary': new_beneficiary.to_dict()}), 201
 
 
@@ -407,6 +412,34 @@ def get_beneficiaries(id):
         return jsonify([beneficiary.to_dict() for beneficiary in beneficiaries]), 200
     return jsonify({"error": "User not found!"}), 404
 
+# Route to delete a beneficiary
+@app.route('/beneficiary/<int:beneficiary_id>', methods=['DELETE'])
+def delete_beneficiary(beneficiary_id):
+    # Check if the user is authenticated (get the current user, similar to the add beneficiary route)
+    user = get_current_user()
+    if not user:
+        return jsonify({'message': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    beneficiary_email = data.get('beneficiary_email')
+
+    if not beneficiary_email:
+        return jsonify({'message': 'Beneficiary email is required'}), 400
+
+    # Find the beneficiary by using email and ensure it was added the current user
+    beneficiary = Beneficiary.query.filter_by(user_id=user.user_id, beneficiary_email=beneficiary_email).first()
+
+    if not beneficiary:
+        return jsonify({'message': 'Beneficiary not found'}), 404
+
+    # Perform a soft delete (set 'is_active' to False)
+    beneficiary.soft_delete()
+    
+    # Commit the changes to the database
+    db.session.commit()
+
+    # Return a success message
+    return jsonify({'message': 'Beneficiary deleted successfully', 'beneficiary': beneficiary.to_dict()}), 200
 
 ### ANALYTICS ROUTES ###
 

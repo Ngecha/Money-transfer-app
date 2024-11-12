@@ -119,8 +119,7 @@ class Beneficiary(db.Model):
 
     beneficiary_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
-    beneficiary_name = db.Column(db.String(100), nullable=False)
-    beneficiary_account = db.Column(db.String(100), nullable=False)
+    beneficiary_email = db.Column(db.String(100), nullable=False, unique=True)
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
 
@@ -132,8 +131,7 @@ class Beneficiary(db.Model):
         return {
             'beneficiary_id': self.beneficiary_id,
             'user_id': self.user_id,
-            'beneficiary_name': self.beneficiary_name,
-            'beneficiary_account': self.beneficiary_account,
+            'beneficiary_email': self.beneficiary_email,
             'added_at': self.added_at,
             'is_active': self.is_active
         }  

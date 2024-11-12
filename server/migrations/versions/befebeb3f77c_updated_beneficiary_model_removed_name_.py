@@ -1,8 +1,8 @@
-"""Initial migration
+"""Updated Beneficiary model: removed name/account, added email
 
-Revision ID: 0008eb17ad84
+Revision ID: befebeb3f77c
 Revises: 
-Create Date: 2024-11-13 00:15:15.801399
+Create Date: 2024-11-13 02:09:54.321843
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '0008eb17ad84'
+revision = 'befebeb3f77c'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -55,12 +55,12 @@ def upgrade():
     op.create_table('beneficiaries',
     sa.Column('beneficiary_id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
-    sa.Column('beneficiary_name', sa.String(length=100), nullable=False),
-    sa.Column('beneficiary_account', sa.String(length=100), nullable=False),
+    sa.Column('beneficiary_email', sa.String(length=100), nullable=False),
     sa.Column('added_at', sa.DateTime(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.user_id'], ),
-    sa.PrimaryKeyConstraint('beneficiary_id')
+    sa.PrimaryKeyConstraint('beneficiary_id'),
+    sa.UniqueConstraint('beneficiary_email')
     )
     op.create_table('wallets',
     sa.Column('wallet_id', sa.Integer(), nullable=False),
