@@ -1,26 +1,66 @@
-name: Basic CI Workflow
+name: CI/CD Pipeline for Flask Application
 
 on:
   push:
     branches:
-      - 'Development'  # Trigger when code is pushed to the 'Development' branch
+      - main
   pull_request:
     branches:
-      - Development  # Trigger on pull requests targeting the 'Development' branch
-  workflow_dispatch:  # Trigger manually via GitHub UI
+      - main
 
 jobs:
-  build:
+  # Step 1: Run Unit Tests and Linting
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v2
 
-      - name: Install requirements
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
         run: |
-          cd server
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run app
-        run: flask run
+      - name: Run Tests
+        run: |
+          python -m unittest discover -s tests
+          # Alternatively, if you use pytest
+          # pytest
+
+      - name: Lint with Flake8
+        run: |
+          pip install flake8
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  # Step 2: Deploy to Render
+  deploy:
+    needs: test  # Only run deploy if the test job succeeds
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Login to Docker Hub
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+      - name: Build and Push Docker Image
+        env:
+          RENDER_SERVICE_NAME: ${{ secrets.RENDER_SERVICE_NAME }}
+          RENDER_SERVICE_WEBHOOK: ${{ secrets.RENDER_SERVICE_WEBHOOK }}
+        run: |
+          docker build -t $DOCKER_USERNAME/$RENDER_SERVICE_NAME:latest .
+          docker push $DOCKER_USERNAME/$RENDER_SERVICE_NAME:latest
+
+      - name: Deploy to Render
+        env:
+          RENDER_SERVICE_WEBHOOK: ${{ secrets.RENDER_SERVICE_WEBHOOK }}
+        run: |
+          curl -X POST "$RENDER_SERVICE_WEBHOOK"
