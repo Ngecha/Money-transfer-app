@@ -1,8 +1,8 @@
 """Initial migration
 
-Revision ID: 7ca79ecdfa0a
+Revision ID: 0008eb17ad84
 Revises: 
-Create Date: 2024-11-11 16:42:45.899703
+Create Date: 2024-11-13 00:15:15.801399
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '7ca79ecdfa0a'
+revision = '0008eb17ad84'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -30,16 +30,16 @@ def upgrade():
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('username', sa.String(length=50), nullable=False),
     sa.Column('email', sa.String(length=120), nullable=False),
+    sa.Column('phone_number', sa.String(length=15), nullable=False),
     sa.Column('password', sa.String(length=128), nullable=False),
     sa.Column('profile_image', sa.String(length=255), nullable=True),
     sa.Column('role', sa.String(length=20), nullable=False),
     sa.Column('status', sa.String(length=20), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.Column('reset_token', sa.String(length=128), nullable=True),
-    sa.Column('reset_token_expiry', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('user_id'),
     sa.UniqueConstraint('email'),
+    sa.UniqueConstraint('phone_number'),
     sa.UniqueConstraint('username')
     )
     op.create_table('analytics',

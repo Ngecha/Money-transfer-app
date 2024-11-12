@@ -22,7 +22,7 @@ class User(db.Model):
     transactions = db.relationship('Transaction', backref='user', lazy=True, cascade="all, delete-orphan")
     beneficiaries = db.relationship('Beneficiary', backref='user', lazy=True, cascade="all, delete-orphan")
 
-    def __init__(self, username, email, password, profile_image=None):
+    def __init__(self, username, email,phone_number, password, profile_image=None):
         self.username = username
         self.email = email
         self.phone_number = phone_number
