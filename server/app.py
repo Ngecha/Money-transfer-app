@@ -98,18 +98,20 @@ def login():
     return jsonify({'message': 'Invalid email or password'}), 401
 
 # User details route
-@app.route('/user', methods=['GET'])
-def get_user():
-    user_id = request.args.get('user_id')
-    user = User.query.get(user_id)
+@app.route('/user/<int:id>', methods=['GET'])
+def get_user(id):
+    user = User.query.get(id)
+    wallets = Wallet.query.filter_by(user_id=id).all()  
+    
     if user:
-        # Including wallet and profile image in the response
+        wallets_data = [wallet.to_dict() for wallet in wallets]
         return jsonify({
             "user": user.to_dict(),
-            "wallet": user.wallet.to_dict() if user.wallet else None,
-            "profile_image": user.profile_image
+            "wallets": wallets_data,  
+            "profile_image": user.profile_image 
         }), 200
     return jsonify({"error": "User not found!"}), 404
+
 
 # User Logout
 @app.route('/logout', methods=['POST'])
@@ -163,19 +165,24 @@ def withdraw_wallet():
     return jsonify({'message': 'Failed to withdraw from wallet'}), 400
 
 # Route to get User's Wallet
-@app.route('/wallet', methods=['GET'])
-def get_wallet():
-    user_id = request.args.get('user_id')
-    user = User.query.get(user_id)
-    if user and user.wallet:
-        return jsonify(user.wallet.to_dict()), 200
-    return jsonify({"error": "Wallet not found!"}), 404
+@app.route('/wallet/<int:id>', methods=['GET'])
+def get_wallet(id):
+    user = User.query.get(id)
+    wallets = Wallet.query.filter_by(user_id=id).all()  
+    if user:
+        wallets_data = [wallet.to_dict() for wallet in wallets]
+        return jsonify({
+            "wallets": wallets_data,   
+        }), 200
+    return jsonify({"error": "user not found!"}), 404
 
 ### TRANSACTION ROUTES ###
 
 @app.route('/transaction', methods=['POST'])
 @login_required
 def handle_transaction():
+    user = get_current_user()
+    user_id = user.user_id
     data = request.get_json()
     sender_wallet_id = data.get('sender_wallet_id')
     receiver_wallet_id = data.get('receiver_wallet_id')
@@ -189,8 +196,18 @@ def handle_transaction():
         return jsonify({"error": "Invalid wallet IDs!"}), 400
     
     # Check balance and perform transaction
-    transaction_fee_rate = 0.02
-    transaction_fee = amount * transaction_fee_rate
+    if amount  >=0 and amount <= 500 :
+        transaction_fee = 0
+    elif amount >=501 and amount <= 10000:
+        transaction_fee = 42
+    elif amount >=100001 and amount <= 50000:
+        transaction_fee = 62
+    elif amount >=50001 and amount <= 60000:
+        transaction_fee = 82
+    elif amount >= 60001 and amount <=70000:
+        transaction_fee = 92
+    else: transaction_fee = amount*0.002
+
     total_deduction = amount + transaction_fee
 
     if sender_wallet.balance < total_deduction:
@@ -201,6 +218,7 @@ def handle_transaction():
     receiver_wallet.balance += amount
 
     transaction = Transaction(
+        user_id=user_id,
         sender_wallet_id=sender_wallet_id,
         receiver_wallet_id=receiver_wallet_id,
         amount=amount,
@@ -210,15 +228,15 @@ def handle_transaction():
     db.session.add(transaction)
     db.session.commit()
 
+    
+
     return jsonify(transaction.to_dict()), 201
 
 
 # Route to get all transactions of a user 
-@app.route('/transactions', methods=['GET'])
-def get_transactions():
-    user_id = request.args.get('user_id')
-    page = request.args.get('page', 1, type=int)
-    user = User.query.get(user_id)
+@app.route('/transactions/<int:id>', methods=['GET'])
+def get_transactions(id):
+    user = User.query.get(id)
     if user:
         if user.wallet:  # Ensure the user has a wallet
             transactions = Transaction.query.filter(
@@ -254,12 +272,11 @@ def add_beneficiary():
 
 
 # Route to get all beneficiaries of a user
-@app.route('/beneficiaries', methods=['GET'])
-def get_beneficiaries():
-    user_id = request.args.get('user_id')
-    user = User.query.get(user_id)
+@app.route('/beneficiaries/<int:id>', methods=['GET'])
+def get_beneficiaries(id):
+    user = User.query.get(id)
     if user:
-        beneficiaries = Beneficiary.query.filter_by(user_id=user_id).all()
+        beneficiaries = Beneficiary.query.filter_by(user_id=id).all()
         return jsonify([beneficiary.to_dict() for beneficiary in beneficiaries]), 200
     return jsonify({"error": "User not found!"}), 404
 
