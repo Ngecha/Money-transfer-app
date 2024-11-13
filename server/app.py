@@ -13,7 +13,8 @@ from db import db
 #create app
 app= Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db' 
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
+# postgresql://moneytransferapp_1v08_user:MPa5iqmH2jkd0oQr3tWM3eTfhSFjLMC2@dpg-csq3t3aj1k6c73824rg0-a.oregon-postgres.render.com/moneytransferapp_1v08
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
@@ -299,8 +300,7 @@ def handle_transaction():
         receiver_wallet_id=receiver_wallet_id,
         amount=amount,
         transaction_fee=transaction_fee,
-        description=description,
-        user_id=user_id
+        description=description
     )
     db.session.add(transaction)
     db.session.commit()
