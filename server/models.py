@@ -31,19 +31,6 @@ class User(db.Model):
         self.profile_image = profile_image
         self.set_password(password)
 
-    @validates('email')
-    def validate_email(self, key, value):
-        email = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-        if not re.match(email, value):
-            raise ValueError('Invalid email address')
-        return value
-    
-    @validates('phone_number')
-    def validate_phone_number(self, key, value):
-        phone = r'^(?:\+254|0)(7|1[0-1])[0-9]{7}$'
-        if not re.match(phone, value):
-            raise ValueError("Invalid phone number. Must be in the format +2547XXXXXXXX, 07XXXXXXXX, or 01XXXXXXX")
-        return value
     
     # Set password with bcrypt hashing
     def set_password(self, password):
