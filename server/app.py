@@ -89,23 +89,21 @@ def register():
         return jsonify({'error': 'User with this email or phone number already exists'}), 409
 
      # Create a new user and a wallet for the user
-    try:
-        new_user = User(username=username, email=email, phone_number=phone_number, password=password, profile_image=profile_image)
-        db.session.add(new_user)
-        db.session.commit()
 
-        new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0, currency="USD")
-        db.session.add(new_wallet)
-        db.session.commit()
+    new_user = User(username=username, email=email, phone_number=phone_number, password=password, profile_image=profile_image)
+    db.session.add(new_user)
+    db.session.commit()
 
-        return jsonify({
+    new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0, currency="USD")
+    db.session.add(new_wallet)
+    db.session.commit()
+
+    return jsonify({
         "message": "User registered successfully!",
         "user": new_user.to_dict(),
         "wallet": new_wallet.to_dict()   
     }), 201
-    
-    except ValueError:
-            return make_response({"error": "validation errors"}, 400)
+
 
   
 # User Login Route 
