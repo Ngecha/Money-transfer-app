@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, redirect, url_for, session
+from flask import Flask, request, jsonify, redirect, url_for, session,make_response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import SQLAlchemyError
 from flask_login import LoginManager, login_required, current_user
@@ -14,7 +14,7 @@ from db import db
 app= Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
-# postgresql://moneytransferapp_wj0p_user:6yYYRFRxL67b431s0Av23Lvmri9klYal@dpg-csqb21lds78s73di7tl0-a.oregon-postgres.render.com/moneytransferapp_wj0p
+# postgresql://postgres.riffjfyfjfhxpwecwogm:money_transfer_app@aws-0-eu-central-1.pooler.supabase.com:6543/postgres
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
@@ -89,20 +89,24 @@ def register():
         return jsonify({'error': 'User with this email or phone number already exists'}), 409
 
      # Create a new user and a wallet for the user
-    
-    new_user = User(username=username, email=email, phone_number=phone_number, password=password, profile_image=profile_image)
-    db.session.add(new_user)
-    db.session.commit()
+    try:
+        new_user = User(username=username, email=email, phone_number=phone_number, password=password, profile_image=profile_image)
+        db.session.add(new_user)
+        db.session.commit()
 
-    new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0, currency="USD")
-    db.session.add(new_wallet)
-    db.session.commit()
+        new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0, currency="USD")
+        db.session.add(new_wallet)
+        db.session.commit()
 
-    return jsonify({
+        return jsonify({
         "message": "User registered successfully!",
         "user": new_user.to_dict(),
         "wallet": new_wallet.to_dict()   
     }), 201
+    
+    except ValueError:
+            return make_response({"error": "validation errors"}, 400)
+
   
 # User Login Route 
 @app.route('/login', methods=['POST'])
