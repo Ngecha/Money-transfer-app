@@ -9,24 +9,23 @@ class User(db.Model):
     user_id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
+    phone_number = db.Column(db.String(15), nullable=False, unique=True)
     password = db.Column(db.String(128), nullable=False)
     profile_image = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(20), nullable=False, default='user')  
     status = db.Column(db.String(20), default='active')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
-
-    reset_token = db.Column(db.String(128), nullable=True)
-    reset_token_expiry = db.Column(db.DateTime, nullable=True)
      
     # Relationships to other models with cascade options
     wallet = db.relationship('Wallet', backref='owner', uselist=False, cascade="all, delete-orphan")
     transactions = db.relationship('Transaction', backref='user', lazy=True, cascade="all, delete-orphan")
     beneficiaries = db.relationship('Beneficiary', backref='user', lazy=True, cascade="all, delete-orphan")
 
-    def __init__(self, username, email, password, profile_image=None):
+    def __init__(self, username, email,phone_number, password, profile_image=None):
         self.username = username
         self.email = email
+        self.phone_number = phone_number
         self.profile_image = profile_image
         self.set_password(password)
     
@@ -64,6 +63,7 @@ class User(db.Model):
             'user_id': self.user_id,
             'username': self.username,
             'email': self.email,
+            'phone_number': self.phone_number,
             'role': self.role,
             'status': self.status,
             'profile_image': self.profile_image,
@@ -119,8 +119,7 @@ class Beneficiary(db.Model):
 
     beneficiary_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
-    beneficiary_name = db.Column(db.String(100), nullable=False)
-    beneficiary_account = db.Column(db.String(100), nullable=False)
+    beneficiary_email = db.Column(db.String(100), nullable=False, unique=True)
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
 
@@ -132,8 +131,7 @@ class Beneficiary(db.Model):
         return {
             'beneficiary_id': self.beneficiary_id,
             'user_id': self.user_id,
-            'beneficiary_name': self.beneficiary_name,
-            'beneficiary_account': self.beneficiary_account,
+            'beneficiary_email': self.beneficiary_email,
             'added_at': self.added_at,
             'is_active': self.is_active
         }  
@@ -149,7 +147,7 @@ class Transaction(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     transaction_date = db.Column(db.DateTime, default=datetime.utcnow)
-    status = db.Column(db.String(20), default='pending')
+    status = db.Column(db.String(20), default='completed')
     transaction_fee = db.Column(db.Float, nullable=True)
     description = db.Column(db.String(200))
     is_reversed = db.Column(db.Boolean, default=False)

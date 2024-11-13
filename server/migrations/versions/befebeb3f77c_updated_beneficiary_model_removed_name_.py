@@ -1,8 +1,8 @@
-"""Initial migration
+"""Updated Beneficiary model: removed name/account, added email
 
-Revision ID: 7ca79ecdfa0a
+Revision ID: befebeb3f77c
 Revises: 
-Create Date: 2024-11-11 16:42:45.899703
+Create Date: 2024-11-13 02:09:54.321843
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '7ca79ecdfa0a'
+revision = 'befebeb3f77c'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -30,16 +30,16 @@ def upgrade():
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('username', sa.String(length=50), nullable=False),
     sa.Column('email', sa.String(length=120), nullable=False),
+    sa.Column('phone_number', sa.String(length=15), nullable=False),
     sa.Column('password', sa.String(length=128), nullable=False),
     sa.Column('profile_image', sa.String(length=255), nullable=True),
     sa.Column('role', sa.String(length=20), nullable=False),
     sa.Column('status', sa.String(length=20), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.Column('reset_token', sa.String(length=128), nullable=True),
-    sa.Column('reset_token_expiry', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('user_id'),
     sa.UniqueConstraint('email'),
+    sa.UniqueConstraint('phone_number'),
     sa.UniqueConstraint('username')
     )
     op.create_table('analytics',
@@ -55,12 +55,12 @@ def upgrade():
     op.create_table('beneficiaries',
     sa.Column('beneficiary_id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
-    sa.Column('beneficiary_name', sa.String(length=100), nullable=False),
-    sa.Column('beneficiary_account', sa.String(length=100), nullable=False),
+    sa.Column('beneficiary_email', sa.String(length=100), nullable=False),
     sa.Column('added_at', sa.DateTime(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.user_id'], ),
-    sa.PrimaryKeyConstraint('beneficiary_id')
+    sa.PrimaryKeyConstraint('beneficiary_id'),
+    sa.UniqueConstraint('beneficiary_email')
     )
     op.create_table('wallets',
     sa.Column('wallet_id', sa.Integer(), nullable=False),
