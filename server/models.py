@@ -33,17 +33,15 @@ class User(db.Model):
 
     @validates('email')
     def validate_email(self, key, value):
-        # Regular expression to validate the email format
-        email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-        if not re.match(email_regex, value):
+        email = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+        if not re.match(email, value):
             raise ValueError('Invalid email address')
         return value
     
     @validates('phone_number')
     def validate_phone_number(self, key, value):
-        # Regular expression for Kenyan phone numbers
-        phone_regex = r'^(?:\+254|0)(7|1[0-1])[0-9]{7}$'
-        if not re.match(phone_regex, value):
+        phone = r'^(?:\+254|0)(7|1[0-1])[0-9]{7}$'
+        if not re.match(phone, value):
             raise ValueError("Invalid phone number. Must be in the format +2547XXXXXXXX, 07XXXXXXXX, or 01XXXXXXX")
         return value
     
