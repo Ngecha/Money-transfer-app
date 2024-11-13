@@ -12,7 +12,7 @@ class User(db.Model):
     username = db.Column(db.String(50), nullable=False, unique=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
     phone_number = db.Column(db.String(15), nullable=False, unique=True)
-    password = db.Column(db.String(), nullable=False)
+    password = db.Column(db.String, nullable=False)
     profile_image = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(20), nullable=False, default='user')  
     status = db.Column(db.String(20), default='active')
