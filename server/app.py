@@ -14,7 +14,7 @@ from db import db
 app= Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
-# postgresql://postgres.riffjfyfjfhxpwecwogm:money_transfer_app@aws-0-eu-central-1.pooler.supabase.com:6543/postgres
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
