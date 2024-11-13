@@ -180,6 +180,7 @@ def view_profile(user_id):
     })
 
 
+
 # User Logout
 @app.route('/logout', methods=['POST'])
 def logout_user():
@@ -232,19 +233,24 @@ def withdraw_wallet():
     return jsonify({'message': 'Failed to withdraw from wallet'}), 400
 
 # Route to get User's Wallet
-@app.route('/wallet', methods=['GET'])
-def get_wallet():
-    user_id = request.args.get('user_id')
-    user = User.query.get(user_id)
-    if user and user.wallet:
-        return jsonify(user.wallet.to_dict()), 200
-    return jsonify({"error": "Wallet not found!"}), 404
+@app.route('/wallet/<int:id>', methods=['GET'])
+def get_wallet(id):
+    user = User.query.get(id)
+    wallets = Wallet.query.filter_by(user_id=id).all()  
+    if user:
+        wallets_data = [wallet.to_dict() for wallet in wallets]
+        return jsonify({
+            "wallets": wallets_data,   
+        }), 200
+    return jsonify({"error": "user not found!"}), 404
 
 ### TRANSACTION ROUTES ###
 
 @app.route('/transaction', methods=['POST'])
 @login_required
 def handle_transaction():
+    user = get_current_user()
+    user_id = user.user_id
     data = request.get_json()
     sender_wallet_id = data.get('sender_wallet_id')
     receiver_wallet_id = data.get('receiver_wallet_id')
@@ -288,6 +294,7 @@ def handle_transaction():
     receiver_wallet.balance += amount
 
     transaction = Transaction(
+        user_id=user_id,
         sender_wallet_id=sender_wallet_id,
         receiver_wallet_id=receiver_wallet_id,
         amount=amount,
@@ -297,6 +304,8 @@ def handle_transaction():
     )
     db.session.add(transaction)
     db.session.commit()
+
+    
 
     return jsonify(transaction.to_dict()), 201
 
