@@ -94,7 +94,7 @@ def register():
     db.session.add(new_user)
     db.session.commit()
 
-    new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0, currency="USD")
+    new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0)
     db.session.add(new_wallet)
     db.session.commit()
 
