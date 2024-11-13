@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.orm import validates
 from db import db
+import re
 
 class User(db.Model):
     __tablename__= 'users'
@@ -10,7 +12,7 @@ class User(db.Model):
     username = db.Column(db.String(50), nullable=False, unique=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
     phone_number = db.Column(db.String(15), nullable=False, unique=True)
-    password = db.Column(db.String(128), nullable=False)
+    password = db.Column(db.String(), nullable=False)
     profile_image = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(20), nullable=False, default='user')  
     status = db.Column(db.String(20), default='active')
@@ -28,6 +30,22 @@ class User(db.Model):
         self.phone_number = phone_number
         self.profile_image = profile_image
         self.set_password(password)
+
+    @validates('email')
+    def validate_email(self, key, value):
+        # Regular expression to validate the email format
+        email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+        if not re.match(email_regex, value):
+            raise ValueError('Invalid email address')
+        return value
+    
+    @validates('phone_number')
+    def validate_phone_number(self, key, value):
+        # Regular expression for Kenyan phone numbers
+        phone_regex = r'^(?:\+254|0)(7|1[0-1])[0-9]{7}$'
+        if not re.match(phone_regex, value):
+            raise ValueError("Invalid phone number. Must be in the format +2547XXXXXXXX, 07XXXXXXXX, or 01XXXXXXX")
+        return value
     
     # Set password with bcrypt hashing
     def set_password(self, password):
@@ -80,7 +98,7 @@ class Wallet(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     wallet_name = db.Column(db.String(50), nullable=True)
     balance = db.Column(db.Float, default=0.0)
-    currency = db.Column(db.String(10), default='USD')
+    currency = db.Column(db.String(10), default='KES')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
 
