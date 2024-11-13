@@ -14,7 +14,7 @@ from db import db
 app= Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
-# postgresql://moneytransferapp_1v08_user:MPa5iqmH2jkd0oQr3tWM3eTfhSFjLMC2@dpg-csq3t3aj1k6c73824rg0-a.oregon-postgres.render.com/moneytransferapp_1v08
+# postgresql://moneytransferapp_wj0p_user:6yYYRFRxL67b431s0Av23Lvmri9klYal@dpg-csqb21lds78s73di7tl0-a.oregon-postgres.render.com/moneytransferapp_wj0p
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
