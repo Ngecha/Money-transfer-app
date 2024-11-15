@@ -139,10 +139,31 @@ def get_user(id):
 
 
 # Getting all Users
+from flask import jsonify, request
+
 @app.route("/users", methods=['GET'])
 def get_users():
-    users = [user.to_dict() for user in User.query.all()]
-    return make_response(users, 200)
+    try:
+        # Pagination parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+
+        # Query and paginate users
+        pagination = User.query.paginate(page=page, per_page=per_page, error_out=False)
+        users = [user.to_dict() for user in pagination.items]
+
+        # Construct response
+        response = {
+            "users": users,
+            "total": pagination.total,
+            "pages": pagination.pages,
+            "current_page": pagination.page,
+        }
+        return jsonify(response), 200
+
+    except Exception as e:
+        return jsonify({"error": "Something went wrong", "details": str(e)}), 500
+
     
 
 # update profile
