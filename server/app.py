@@ -136,6 +136,13 @@ def get_user(id):
             "profile_image": user.profile_image 
         }), 200
     return jsonify({"error": "User not found!"}), 404
+
+
+# Getting all Users
+@app.route("/users", methods=['GET'])
+def get_users():
+    users = [user.to_dict() for user in User.query.all()]
+    return make_response(users, 200)
     
 
 # update profile
