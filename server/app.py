@@ -9,15 +9,18 @@ from flask_login import UserMixin
 from functools import wraps
 import bcrypt
 from db import db
+from flask_cors import CORS
+
 
 #create app
 app= Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
+app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///app.db"
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
+CORS(app)
 
 #initialize extentions with the app
 db.init_app(app)
