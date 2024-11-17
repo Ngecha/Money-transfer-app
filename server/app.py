@@ -93,13 +93,18 @@ def register():
 
      # Create a new user and a wallet for the user
 
-    new_user = User(username=username, email=email, phone_number=phone_number, password=password, profile_image=profile_image)
-    db.session.add(new_user)
-    db.session.commit()
+    try:
 
-    new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0)
-    db.session.add(new_wallet)
-    db.session.commit()
+        new_user = User(username=username, email=email, phone_number=phone_number, password=password, profile_image=profile_image)
+        db.session.add(new_user)
+        db.session.commit()
+
+        new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0)
+        db.session.add(new_wallet)
+        db.session.commit()
+
+    except ValueError:
+        return jsonify({"message": "Wrong phone number or email format"})
 
     return jsonify({
         "message": "User registered successfully!",
@@ -112,15 +117,16 @@ def register():
 # User Login Route 
 @app.route('/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
+        email = request.json.get("email")
+        password = request.json.get("password")
 
-    user = User.query.filter_by(email=email).first()
-    if user and user.check_password(password):
-        session['user_id'] = user.user_id
-        return jsonify({'message': 'Login successful', 'user': user.to_dict()}), 200
-    return jsonify({'message': 'Invalid email or password'}), 401
+        user = User.query.filter_by(email=email).first()
+
+        if user and user.check_password(password):
+            session['user_id'] = user.user_id
+            session['username'] = user.username
+            return jsonify({"token": "fake-jwt-token", "username": user.username})
+        return {"error": "Invalid credentials"}, 401
 
 # User details route
 @app.route('/user/<int:id>', methods=['GET'])
@@ -139,30 +145,25 @@ def get_user(id):
 
 
 # Getting all Users
-from flask import jsonify, request
 
 @app.route("/users", methods=['GET'])
 def get_users():
     try:
-        # Pagination parameters
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
+        # Query all users
+        users = User.query.all()
 
-        # Query and paginate users
-        pagination = User.query.paginate(page=page, per_page=per_page, error_out=False)
-        users = [user.to_dict() for user in pagination.items]
+        # Serialize the users
+        users_list = [user.to_dict() for user in users]
 
         # Construct response
         response = {
-            "users": users,
-            "total": pagination.total,
-            "pages": pagination.pages,
-            "current_page": pagination.page,
+            "users": users_list,
         }
         return jsonify(response), 200
 
     except Exception as e:
         return jsonify({"error": "Something went wrong", "details": str(e)}), 500
+
 
     
 
@@ -172,9 +173,6 @@ def update_profile(user_id):
     # Check if the user is logged in
     if 'user_id' not in session:
         return jsonify({"error": "Authentication required!"}), 401
-    # Ensure the logged-in user matches the user_id in the URL
-    if session['user_id'] != user_id:
-        return jsonify({"error": "You can only update your own profile"}), 403
 
     # Fetch the user from the database
     user = User.query.get_or_404(user_id)
@@ -217,9 +215,10 @@ def view_profile(user_id):
 
 # User Logout
 @app.route('/logout', methods=['POST'])
-def logout_user():
+def logout():
     session.pop('user_id', None)
-    return jsonify({'message': 'Logged out successfully'}), 200
+    session.pop('username', None)
+    return {"message": "Logged out successfully"}, 200
 
 ### WALLET ROUTES ###
 # Create a Wallet
@@ -421,12 +420,13 @@ def get_transactions(id):
 # Route to add a beneficiary
 @app.route('/beneficiary', methods=['POST'])
 def add_beneficiary():
-    user = get_current_user()
-    if not user:
-        return jsonify({'message': 'Unauthorized'}), 401
+    # user = get_current_user()
+    # if not user:
+        # return jsonify({'message': 'Unauthorized'}), 401
 
     data = request.get_json()
     beneficiary_email = data.get('beneficiary_email')
+    user_id=data.get('user_id')
 
     # Check if beneficiary email exists in the system
     beneficiary = User.query.filter_by(email=beneficiary_email).first()
@@ -435,7 +435,7 @@ def add_beneficiary():
     
      # Create a new beneficiary record
     new_beneficiary = Beneficiary(
-        user_id=user.user_id,
+        user_id=user_id,
         beneficiary_email=beneficiary_email
     )
    
@@ -455,33 +455,13 @@ def get_beneficiaries(id):
     return jsonify({"error": "User not found!"}), 404
 
 # Route to delete a beneficiary
-@app.route('/beneficiary/<int:beneficiary_id>', methods=['DELETE'])
-def delete_beneficiary(beneficiary_id):
-    # Check if the user is authenticated (get the current user, similar to the add beneficiary route)
-    user = get_current_user()
-    if not user:
-        return jsonify({'message': 'Unauthorized'}), 401
-
-    data = request.get_json()
-    beneficiary_email = data.get('beneficiary_email')
-
-    if not beneficiary_email:
-        return jsonify({'message': 'Beneficiary email is required'}), 400
-
-    # Find the beneficiary by using email and ensure it was added the current user
-    beneficiary = Beneficiary.query.filter_by(user_id=user.user_id, beneficiary_email=beneficiary_email).first()
-
-    if not beneficiary:
-        return jsonify({'message': 'Beneficiary not found'}), 404
-
-    # Perform a soft delete (set 'is_active' to False)
-    beneficiary.soft_delete()
+@app.route('/beneficiary/<int:id>', methods=['DELETE'])
+def delete_beneficiary(id):
     
-    # Commit the changes to the database
+    beneficiary = Beneficiary.query.filter(Beneficiary.beneficiary_id == id).first()
+    db.session.delete(beneficiary)
     db.session.commit()
-
-    # Return a success message
-    return jsonify({'message': 'Beneficiary deleted successfully', 'beneficiary': beneficiary.to_dict()}), 200
+    return make_response({'message': 'beneficiary successfully deleted'}, 200)
 
 ### ANALYTICS ROUTES ###
 
