@@ -47,30 +47,16 @@ class User(db.Model):
         if profile_image:
             self.profile_image = profile_image
     
-    #  # Set password reset token
-    # def set_reset_token(self, token, expiry_hours):
-    #     if isinstance(token, bytes):
-    #         self.reset_token = token.decode('utf-8')  # decode bytes to string
-    #     else:
-    #         self.reset_token = token
-    #     self.reset_token_expiry = datetime.utcnow() + timedelta(hours=expiry_hours)
-
-    # # Clear password reset token after use 
-    # def clear_reset_token(self):
-    #     self.reset_token = None
-    #     self.reset_token_expiry = None
 
     @validates('phone_number')
     def validate_phone_number(self, key, value):
-        # Refined regex to match Kenyan phone number formats
         phone_regex = r'^(?:\+2547|07|01)\d{8}$'
         if not re.match(phone_regex, value):
-            raise ValueError("Invalid phone number. Must be in the format +2547XXXXXXXX, 07XXXXXXXX, or 01XXXXXXXX.")
+            raise ValueError("Invalid phone number.")
         return value
     
     @validates('email')
     def validate_email(self, key, value):
-        # Regular expression to validate the email format
         email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
         if not re.match(email_regex, value):
             raise ValueError('Invalid email address')
@@ -83,11 +69,11 @@ class User(db.Model):
             'username': self.username,
             'email': self.email,
             'phone_number': self.phone_number,
-            # 'role': self.role,
-            # 'status': self.status,
-            # 'profile_image': self.profile_image,
-            # 'created_at': self.created_at,
-            # 'updated_at': self.updated_at
+            'role': self.role,
+            'status': self.status,
+            'profile_image': self.profile_image,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at
         }
 
 
@@ -139,12 +125,10 @@ class Beneficiary(db.Model):
     beneficiary_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     beneficiary_email = db.Column(db.String(100), nullable=False, unique=True)
+    phone_number=db.Column(db.Integer, nullable=False, unique=True)
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
 
-    # soft delete
-    def soft_delete(self):
-        self.is_active = False
 
     def to_dict(self):
         return {

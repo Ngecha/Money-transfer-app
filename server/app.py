@@ -223,16 +223,11 @@ def logout():
 ### WALLET ROUTES ###
 # Create a Wallet
 @app.route('/wallet', methods=['POST'])
-@login_required
 def create_wallet():
-    user = get_current_user()
-    if not user:
-        return jsonify({'message': 'Unauthorized'}), 401
-
-    user = User.query.get(session['user_id'])
     data = request.json
+    user_id=data.get("user_id")
     wallet_name = data.get('wallet_name', 'My Wallet')
-    new_wallet = Wallet(user_id=user.user_id, wallet_name=wallet_name)
+    new_wallet = Wallet(user_id=user_id, wallet_name=wallet_name)
     db.session.add(new_wallet)
     db.session.commit()
     return jsonify({'message': 'Wallet created successfully', 'wallet': new_wallet.to_dict()}), 201
@@ -308,7 +303,7 @@ def handle_transaction():
     if amount  >=0 and amount <= 500 :
         transaction_fee = 0
     elif amount >=501 and amount <= 10000:
-        transaction_fee = 42
+        transaction_fee = 20
     elif amount >=100001 and amount <= 50000:
         transaction_fee = 62
     elif amount >=50001 and amount <= 60000:
@@ -420,10 +415,6 @@ def get_transactions(id):
 # Route to add a beneficiary
 @app.route('/beneficiary', methods=['POST'])
 def add_beneficiary():
-    # user = get_current_user()
-    # if not user:
-        # return jsonify({'message': 'Unauthorized'}), 401
-
     data = request.get_json()
     beneficiary_email = data.get('beneficiary_email')
     user_id=data.get('user_id')
