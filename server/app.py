@@ -4,7 +4,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from flask_login import LoginManager, login_required, current_user
 from flask_migrate import Migrate
 from werkzeug.utils import secure_filename
-import os
 from flask_login import UserMixin
 from functools import wraps
 import bcrypt
@@ -13,7 +12,7 @@ from db import db
 #create app
 app= Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 # postgresql://moneytransferapp_1v08_user:MPa5iqmH2jkd0oQr3tWM3eTfhSFjLMC2@dpg-csq3t3aj1k6c73824rg0-a.oregon-postgres.render.com/moneytransferapp_1v08
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
@@ -66,6 +65,10 @@ def allowed_file(filename):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+@app.route('/')
+def home():
+    return "Welcome to the Money Transfer App!"
 
 ### USER AUTHENTICATION ROUTES ###
 
@@ -207,17 +210,34 @@ def create_wallet():
 
 
 # Fund Wallet
+# Fund Wallet Route
 @app.route('/wallet/fund', methods=['POST'])
+@login_required
 def fund_wallet():
+    user = get_current_user()
+    if not user:
+        return jsonify({'message': 'Unauthorized'}), 401
+
     data = request.json
     wallet_id = data.get('wallet_id')
     amount = data.get('amount')
 
-    wallet = Wallet.query.get(wallet_id)
-    if wallet and wallet.fund_wallet(amount):
+    # Validate the input
+    if not wallet_id or not amount or amount <= 0:
+        return jsonify({'error': 'Invalid wallet ID or amount'}), 400
+
+    wallet = Wallet.query.filter_by(user_id=user.user_id, wallet_id=wallet_id).first()
+    if not wallet:
+        return jsonify({'error': 'Wallet not found'}), 404
+
+    try:
+        # Fund the wallet
+        wallet.balance += amount
         db.session.commit()
         return jsonify({'message': 'Wallet funded successfully', 'balance': wallet.balance}), 200
-    return jsonify({'message': 'Failed to fund wallet'}), 400
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 
 # Withdraw from Wallet
@@ -247,127 +267,140 @@ def get_wallet(id):
 
 ### TRANSACTION ROUTES ###
 
-@app.route('/transaction', methods=['POST'])
+@app.route('/send-money', methods=['POST'])
 @login_required
-def handle_transaction():
+def send_money():
     user = get_current_user()
-    user_id = user.user_id
+    if not user:
+        return jsonify({"error": "Authentication required"}), 401
+
     data = request.get_json()
-    sender_wallet_id = data.get('sender_wallet_id')
-    receiver_wallet_id = data.get('receiver_wallet_id')
+    beneficiary_email = data.get('beneficiary_email')
     amount = data.get('amount')
     description = data.get('description', '')
-    
-    user_id = session.get('user_id')
 
-    # Validate input data
-    if not all([sender_wallet_id, receiver_wallet_id, amount]):
-        return jsonify({"error": "Missing required fields!"}), 400
-    if amount <= 0:
-        return jsonify({"error": "Amount must be greater than zero!"}), 400
-   
-    sender_wallet = Wallet.query.get(sender_wallet_id)
-    receiver_wallet = Wallet.query.get(receiver_wallet_id)
-
-    if not sender_wallet or not receiver_wallet:
-        return jsonify({"error": "Invalid wallet IDs!"}), 400
-    
-     # Check balance and perform transaction
-    if amount  >=0 and amount <= 500 :
-        transaction_fee = 0
-    elif amount >=501 and amount <= 10000:
-        transaction_fee = 42
-    elif amount >=100001 and amount <= 50000:
-        transaction_fee = 62
-    elif amount >=50001 and amount <= 60000:
-        transaction_fee = 82
-    elif amount >= 60001 and amount <=70000:
-        transaction_fee = 92
-    else: transaction_fee = amount*0.002
-
-    total_deduction = amount + transaction_fee
-
-    if sender_wallet.balance < total_deduction:
-        return jsonify({"error": "Insufficient funds!"}), 400
-
-    # Proceed with transaction
-    sender_wallet.balance -= total_deduction
-    receiver_wallet.balance += amount
-
-    transaction = Transaction(
-        user_id=user_id,
-        sender_wallet_id=sender_wallet_id,
-        receiver_wallet_id=receiver_wallet_id,
-        amount=amount,
-        transaction_fee=transaction_fee,
-        description=description
-    )
-    db.session.add(transaction)
-    db.session.commit()
-
-    
-
-    return jsonify(transaction.to_dict()), 201
-
-# Route for reversing a transaction
-@app.route('/transaction/reverse/<int:transaction_id>', methods=['POST'])
-
-def reverse_transaction(transaction_id):
-
-    if 'user_id' not in session:
-        return jsonify({"error": "Authentication required!"}), 401
-
-    # Fetch current user
-    current_user_id = session['user_id']
-    current_user = User.query.get(current_user_id)
-     # Fetch the transaction to be reversed
-    transaction = Transaction.query.get(transaction_id)
-
-    # Check if the transaction exists
-    if not transaction:
-        return jsonify({"error": "Transaction not found!"}), 404
-
-    # Ensure the transaction is not already reversed
-    if transaction.is_reversed:
-        return jsonify({"error": "Transaction has already been reversed!"}), 400
-
-    # Ensure the current user is the one who performed the transaction
-    if transaction.user_id != current_user.user_id:
-        return jsonify({"error": "You cannot reverse a transaction that you did not initiate!"}), 403
-
-    # Check if sender and receiver wallets are valid
-    sender_wallet = Wallet.query.get(transaction.sender_wallet_id)
-    receiver_wallet = Wallet.query.get(transaction.receiver_wallet_id)
-
-    if not sender_wallet or not receiver_wallet:
-        return jsonify({"error": "Invalid wallet IDs associated with this transaction!"}), 400
-
-    # Reverse the transaction by updating the wallets and the transaction status
-    # 1. Perform reversal on wallets (subtract the amount from the receiver and add back to the sender)
-    if receiver_wallet.balance < transaction.amount:
-        return jsonify({"error": "Receiver does not have sufficient funds for reversal!"}), 400
+    # Validate input
+    if not beneficiary_email or not amount:
+        return jsonify({"error": "Beneficiary email and amount are required"}), 400
+    if not isinstance(amount, (int, float)) or amount <= 0:
+        return jsonify({"error": "Invalid amount"}), 400
 
     try:
-        # Reverse the wallet balances
-        sender_wallet.balance += transaction.amount
-        receiver_wallet.balance -= transaction.amount
+        # Fetch sender's wallet
+        sender_wallet = Wallet.query.filter_by(user_id=user.user_id).first()
+        if not sender_wallet:
+            return jsonify({"error": "Sender wallet not found"}), 404
 
-        # Mark the transaction as reversed
-        transaction.reverse_transaction()
-        transaction.status = 'reversed'
+        # Fetch beneficiary
+        beneficiary = Beneficiary.query.filter_by(beneficiary_email=beneficiary_email, is_active=True).first()
+        if not beneficiary:
+            return jsonify({"error": "Beneficiary not found or inactive"}), 404
+
+        # Fetch receiver's wallet
+        receiver_wallet = Wallet.query.filter_by(user_id=beneficiary.user_id).first()
+        if not receiver_wallet:
+            return jsonify({"error": "Receiver wallet not found"}), 404
+
+        # Transaction fee calculation
+        transaction_fee = 0
+        if 0 < amount <= 500:
+            transaction_fee = 0
+        elif 501 <= amount <= 10000:
+            transaction_fee = 42
+        elif 10001 <= amount <= 50000:
+            transaction_fee = 62
+        elif 50001 <= amount <= 60000:
+            transaction_fee = 82
+        elif 60001 <= amount <= 70000:
+            transaction_fee = 92
+        else:
+            transaction_fee = amount * 0.002
+
+        total_deduction = amount + transaction_fee
+
+        # Check if sender has enough funds
+        if sender_wallet.balance < total_deduction:
+            return jsonify({"error": "Insufficient funds"}), 400
+
+        # Start the transaction explicitly
+        db.session.begin()
+
+        # Deduct from sender
+        sender_wallet.balance -= total_deduction
+        db.session.add(sender_wallet)
+
+        # Credit receiver
+        receiver_wallet.balance += amount
+        db.session.add(receiver_wallet)
+
+        # Create the transaction record
+        transaction = Transaction.create_transaction(
+            sender_wallet=sender_wallet,
+            receiver_wallet=receiver_wallet,
+            user_id=user.user_id,
+            amount=amount,
+            description=description,
+            recipient_email=beneficiary_email,
+            transaction_fee=transaction_fee,
+            transaction_type='payment'
+        )
 
         # Commit the transaction
         db.session.commit()
+        db.session.remove()
 
-        return jsonify({
-            "message": "Transaction reversed successfully!",
-            "transaction": transaction.to_dict()
-        }), 200
-        
+        return jsonify(transaction.to_dict()), 201
 
     except SQLAlchemyError as e:
         db.session.rollback()
-        return jsonify({"error": f"Database error occurred: {str(e)}"}), 500
+        db.session.remove()
+        return jsonify({"error": str(e)}), 500
+
+
+# Route for reversing a transaction
+@app.route('/transaction/reverse/<int:transaction_id>', methods=['POST'])
+@login_required
+def reverse_transaction(transaction_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Authentication required"}), 401
+
+    try:
+        # Fetch the transaction to be reversed
+        transaction = Transaction.query.get(transaction_id)
+        if not transaction:
+            return jsonify({"error": "Transaction not found"}), 404
+
+        # Ensure the transaction is not already reversed
+        if transaction.is_reversed:
+            return jsonify({"error": "Transaction already reversed"}), 400
+
+        # Verify if the current user is the initiator of the transaction
+        if transaction.user_id != user.user_id:
+            return jsonify({"error": "Unauthorized to reverse this transaction"}), 403
+
+        # Fetch sender and receiver wallets
+        sender_wallet = Wallet.query.get(transaction.sender_wallet_id)
+        receiver_wallet = Wallet.query.get(transaction.receiver_wallet_id)
+
+        if not sender_wallet or not receiver_wallet:
+            return jsonify({"error": "Wallets involved not found"}), 404
+
+        # Reverse the transaction
+        with db.session.begin():
+            sender_wallet.balance += transaction.amount + transaction.transaction_fee
+            receiver_wallet.balance -= transaction.amount
+            transaction.is_reversed = True
+
+            db.session.add(sender_wallet)
+            db.session.add(receiver_wallet)
+            db.session.add(transaction)
+
+        return jsonify({"message": "Transaction reversed successfully"}), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 # Route to get all transactions of a user 
 @app.route('/transactions/<int:id>', methods=['GET'])
@@ -386,30 +419,41 @@ def get_transactions(id):
 
 ### BENEFICIARY ROUTES ###
 # Route to add a beneficiary
-@app.route('/beneficiary', methods=['POST'])
+# Add Beneficiary Route
+@app.route('/beneficiary/add', methods=['POST'])
+@login_required
 def add_beneficiary():
     user = get_current_user()
     if not user:
-        return jsonify({'message': 'Unauthorized'}), 401
+        return jsonify({"error": "Authentication required"}), 401
 
     data = request.get_json()
     beneficiary_email = data.get('beneficiary_email')
-
-    # Check if beneficiary email exists in the system
-    beneficiary = User.query.filter_by(email=beneficiary_email).first()
-    if not beneficiary:
-        return jsonify({'message': 'Beneficiary email not found'}), 404
     
-     # Create a new beneficiary record
-    new_beneficiary = Beneficiary(
-        user_id=user.user_id,
-        beneficiary_email=beneficiary_email
-    )
-   
-    db.session.add(new_beneficiary)
-    db.session.commit()
 
-    return jsonify({'message': 'Beneficiary added', 'beneficiary': new_beneficiary.to_dict()}), 201
+    # Validate the input
+    if not beneficiary_email :
+        return jsonify({"error": "Beneficiary email is required"}), 400
+
+    # Check if the beneficiary already exists for this user
+    existing_beneficiary = Beneficiary.query.filter_by(
+        user_id=user.user_id, beneficiary_email=beneficiary_email).first()
+    if existing_beneficiary:
+        return jsonify({"error": "Beneficiary already exists"}), 409
+
+    try:
+        # Add new beneficiary
+        new_beneficiary = Beneficiary(
+            user_id=user.user_id,
+            beneficiary_email=beneficiary_email,
+            is_active=True
+        )
+        db.session.add(new_beneficiary)
+        db.session.commit()
+        return jsonify({"message": "Beneficiary added successfully", "beneficiary": new_beneficiary.to_dict()}), 201
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 
 # Route to get all beneficiaries of a user
@@ -449,6 +493,56 @@ def delete_beneficiary(beneficiary_id):
 
     # Return a success message
     return jsonify({'message': 'Beneficiary deleted successfully', 'beneficiary': beneficiary.to_dict()}), 200
+
+# Route to fetch transaction history for a specific user
+@app.route('/transactions/history', methods=['GET'])
+@login_required
+def get_transaction_history():
+    # Fetch the currently logged-in user from session
+    user_id = session.get('user_id')
+
+    # Check if the user is authenticated
+    if not user_id:
+        return jsonify({'message': 'Unauthorized access. Please log in.'}), 401
+
+    # Get the optional 'date' parameter from query string
+    date = request.args.get('date')  # Format: 'YYYY-MM-DD'
+
+    # Validate the 'date' parameter
+    if not date:
+        return jsonify({'message': 'Date parameter is required. Format: YYYY-MM-DD.'}), 400
+
+    try:
+        # Parse the date into a datetime object for comparison
+        date = datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+
+    # Build the query to fetch transactions related to the user
+    query = Transaction.query.filter_by(user_id=user_id, transaction_date=date)
+
+    # Fetch the transactions from the database
+    transactions = query.order_by(Transaction.transaction_date.desc()).all()
+
+    # Check if any transactions were found
+    if not transactions:
+        return jsonify({'message': 'No transactions found for the specified date.'}), 404
+
+    # Prepare the transaction data, including only the receiver's email, balance after transaction, and UUID
+    transaction_list = [
+        {
+            'transaction_id': transaction.transaction_id,
+            'receiver_email': transaction.recipient_email,
+            'balance_after_transaction': transaction.balance_after_transaction
+        }
+        for transaction in transactions
+    ]
+
+    return jsonify({
+        'message': 'Transaction history fetched successfully',
+        'transactions': transaction_list
+    }), 200
+
 
 ### ANALYTICS ROUTES ###
 

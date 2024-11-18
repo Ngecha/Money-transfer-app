@@ -1,8 +1,8 @@
-"""Updated Beneficiary model: removed name/account, added email
+"""Initial migration
 
-Revision ID: befebeb3f77c
+Revision ID: 609363790ca7
 Revises: 
-Create Date: 2024-11-13 02:09:54.321843
+Create Date: 2024-11-14 15:58:42.457860
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'befebeb3f77c'
+revision = '609363790ca7'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -74,13 +74,16 @@ def upgrade():
     sa.PrimaryKeyConstraint('wallet_id')
     )
     op.create_table('transactions',
-    sa.Column('transaction_id', sa.Integer(), nullable=False),
+    sa.Column('transaction_id', sa.String(length=36), nullable=False),
     sa.Column('sender_wallet_id', sa.Integer(), nullable=False),
     sa.Column('receiver_wallet_id', sa.Integer(), nullable=False),
+    sa.Column('recipient_email', sa.String(length=100), nullable=True),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('amount', sa.Float(), nullable=False),
     sa.Column('transaction_date', sa.DateTime(), nullable=True),
     sa.Column('status', sa.String(length=20), nullable=True),
+    sa.Column('balance_after_transaction', sa.Float(), nullable=True),
+    sa.Column('transaction_type', sa.String(length=20), nullable=False),
     sa.Column('transaction_fee', sa.Float(), nullable=True),
     sa.Column('description', sa.String(length=200), nullable=True),
     sa.Column('is_reversed', sa.Boolean(), nullable=True),
