@@ -125,13 +125,13 @@ def login():
         if user and user.check_password(password):
             session['user_id'] = user.user_id
             session['username'] = user.username
-            return jsonify({"token": "fake-jwt-token", "username": user.username})
+            return jsonify({"token": "fake-jwt-token", "username": user.username, "user_id": user.user_id})
         return {"error": "Invalid credentials"}, 401
 
 # User details route
 @app.route('/user/<int:id>', methods=['GET'])
 def get_user(id):
-    user = User.query.get(id)
+    user = db.session.get(User, id)
     wallets = Wallet.query.filter_by(user_id=id).all()  
     
     if user:
@@ -268,14 +268,13 @@ def withdraw_wallet():
 # Route to get User's Wallet
 @app.route('/wallet/<int:id>', methods=['GET'])
 def get_wallet(id):
-    user = User.query.get(id)
-    wallets = Wallet.query.filter_by(user_id=id).all()  
+    user = db.session.get(User, id)
     if user:
+        wallets = Wallet.query.filter_by(user_id=id).all()
         wallets_data = [wallet.to_dict() for wallet in wallets]
-        return jsonify({
-            "wallets": wallets_data,   
-        }), 200
+        return jsonify({"wallets": wallets_data}), 200
     return jsonify({"error": "user not found!"}), 404
+
 
 ### TRANSACTION ROUTES ###
 
@@ -404,7 +403,7 @@ def reverse_transaction(transaction_id):
 # Route to get all transactions of a user 
 @app.route('/transactions/<int:id>', methods=['GET'])
 def get_transactions(id):
-    user = User.query.get(id)
+    user = db.session.get(User, id)
     if user:
         if user.wallet:  # Ensure the user has a wallet
             transactions = Transaction.query.filter(
@@ -448,7 +447,7 @@ def add_beneficiary():
 # Route to get all beneficiaries of a user
 @app.route('/beneficiaries/<int:id>', methods=['GET'])
 def get_beneficiaries(id):
-    user = User.query.get(id)
+    user = db.session.get(User, id)
     if user:
         beneficiaries = Beneficiary.query.filter_by(user_id=id).all()
         return jsonify([beneficiary.to_dict() for beneficiary in beneficiaries]), 200
