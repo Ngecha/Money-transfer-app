@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import SQLAlchemyError
 from flask_login import LoginManager, login_required, current_user
 from flask_migrate import Migrate
+from datetime import datetime
 from werkzeug.utils import secure_filename
 from flask_login import UserMixin
 from functools import wraps
@@ -233,12 +234,31 @@ def fund_wallet():
     try:
         # Fund the wallet
         wallet.balance += amount
+
+        # Record the transaction
+        transaction = Transaction(
+            sender_wallet_id=None,  # No sender for a deposit
+            receiver_wallet_id=wallet.wallet_id, 
+            recipient_email=None,  
+            user_id=user.user_id, 
+            amount=amount,
+            transaction_date=datetime.now(),
+            balance_after_transaction=wallet.balance,
+            status='completed',
+            transaction_type='deposit'  # Mark this as a deposit
+        )
+
+        db.session.add(transaction)
         db.session.commit()
-        return jsonify({'message': 'Wallet funded successfully', 'balance': wallet.balance}), 200
+
+        return jsonify({
+            'message': 'Wallet funded successfully',
+            'balance': wallet.balance,
+            'transaction': transaction.to_dict()  # Return the transaction details as well
+        }), 200
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
-
 
 # Withdraw from Wallet
 @app.route('/wallet/withdraw', methods=['POST'])
@@ -248,11 +268,34 @@ def withdraw_wallet():
     amount = data.get('amount')
 
     wallet = Wallet.query.get(wallet_id)
-    if wallet and wallet.withdraw(amount):
-        db.session.commit()
-        return jsonify({'message': 'Withdrawal successful', 'balance': wallet.balance}), 200
-    return jsonify({'message': 'Failed to withdraw from wallet'}), 400
+    if wallet and wallet.balance >= amount:  # Ensure there's enough balance to withdraw
+        try:
+            # Withdraw funds
+            wallet.balance -= amount
 
+            # Record the transaction
+            transaction = Transaction(
+                sender_wallet_id=wallet.wallet_id,  # The wallet is the sender
+                receiver_wallet_id=None,  # No receiver for a withdrawal (or could be an external account)
+                amount=amount,
+                transaction_date=datetime.now(),
+                balance_after_transaction=wallet.balance,
+                transaction_type='withdrawal'  # Mark this as a withdrawal
+            )
+
+            db.session.add(transaction)
+            db.session.commit()
+
+            return jsonify({
+                'message': 'Withdrawal successful',
+                'balance': wallet.balance,
+                'transaction': transaction.to_dict()  # Return the transaction details as well
+            }), 200
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify({'message': 'Failed to withdraw from wallet'}), 400
 # Route to get User's Wallet
 @app.route('/wallet/<int:id>', methods=['GET'])
 def get_wallet(id):
@@ -267,93 +310,90 @@ def get_wallet(id):
 
 ### TRANSACTION ROUTES ###
 
-@app.route('/send-money', methods=['POST'])
+@app.route('/transaction', methods=['POST'])
 @login_required
-def send_money():
+def handle_transaction():
     user = get_current_user()
     if not user:
         return jsonify({"error": "Authentication required"}), 401
 
     data = request.get_json()
+    sender_wallet_id = data.get('sender_wallet_id')
+    receiver_wallet_id = data.get('receiver_wallet_id')
     beneficiary_email = data.get('beneficiary_email')
     amount = data.get('amount')
     description = data.get('description', '')
 
     # Validate input
-    if not beneficiary_email or not amount:
-        return jsonify({"error": "Beneficiary email and amount are required"}), 400
-    if not isinstance(amount, (int, float)) or amount <= 0:
-        return jsonify({"error": "Invalid amount"}), 400
+    if not amount or amount <= 0:
+        return jsonify({"error": "Invalid or missing amount!"}), 400
 
-    try:
-        # Fetch sender's wallet
+    sender_wallet = None
+    receiver_wallet = None
+
+    # Fetch sender wallet
+    if sender_wallet_id:
+        sender_wallet = Wallet.query.get(sender_wallet_id)
+    else:
         sender_wallet = Wallet.query.filter_by(user_id=user.user_id).first()
-        if not sender_wallet:
-            return jsonify({"error": "Sender wallet not found"}), 404
 
-        # Fetch beneficiary
+    if not sender_wallet:
+        return jsonify({"error": "Sender wallet not found"}), 404
+
+    # Fetch receiver wallet
+    if receiver_wallet_id:
+        receiver_wallet = Wallet.query.get(receiver_wallet_id)
+    elif beneficiary_email:
         beneficiary = Beneficiary.query.filter_by(beneficiary_email=beneficiary_email, is_active=True).first()
         if not beneficiary:
             return jsonify({"error": "Beneficiary not found or inactive"}), 404
-
-        # Fetch receiver's wallet
         receiver_wallet = Wallet.query.filter_by(user_id=beneficiary.user_id).first()
-        if not receiver_wallet:
-            return jsonify({"error": "Receiver wallet not found"}), 404
 
-        # Transaction fee calculation
+    if not receiver_wallet:
+        return jsonify({"error": "Receiver wallet not found"}), 404
+
+    # Transaction fee calculation
+    if 0 < amount <= 500:
         transaction_fee = 0
-        if 0 < amount <= 500:
-            transaction_fee = 0
-        elif 501 <= amount <= 10000:
-            transaction_fee = 42
-        elif 10001 <= amount <= 50000:
-            transaction_fee = 62
-        elif 50001 <= amount <= 60000:
-            transaction_fee = 82
-        elif 60001 <= amount <= 70000:
-            transaction_fee = 92
-        else:
-            transaction_fee = amount * 0.002
+    elif 501 <= amount <= 10000:
+        transaction_fee = 42
+    elif 10001 <= amount <= 50000:
+        transaction_fee = 62
+    elif 50001 <= amount <= 60000:
+        transaction_fee = 82
+    elif 60001 <= amount <= 70000:
+        transaction_fee = 92
+    else:
+        transaction_fee = amount * 0.002
 
-        total_deduction = amount + transaction_fee
+    total_deduction = amount + transaction_fee
 
-        # Check if sender has enough funds
-        if sender_wallet.balance < total_deduction:
-            return jsonify({"error": "Insufficient funds"}), 400
+    # Check if sender has enough funds
+    if sender_wallet.balance < total_deduction:
+        return jsonify({"error": "Insufficient funds"}), 400
 
-        # Start the transaction explicitly
-        db.session.begin()
+    try:
+        # Perform transaction
+        with db.session.begin():
+            sender_wallet.balance -= total_deduction
+            receiver_wallet.balance += amount
+            db.session.add(sender_wallet)
+            db.session.add(receiver_wallet)
 
-        # Deduct from sender
-        sender_wallet.balance -= total_deduction
-        db.session.add(sender_wallet)
-
-        # Credit receiver
-        receiver_wallet.balance += amount
-        db.session.add(receiver_wallet)
-
-        # Create the transaction record
-        transaction = Transaction.create_transaction(
-            sender_wallet=sender_wallet,
-            receiver_wallet=receiver_wallet,
-            user_id=user.user_id,
-            amount=amount,
-            description=description,
-            recipient_email=beneficiary_email,
-            transaction_fee=transaction_fee,
-            transaction_type='payment'
-        )
-
-        # Commit the transaction
-        db.session.commit()
-        db.session.remove()
+            transaction = Transaction(
+                user_id=user.user_id,
+                sender_wallet_id=sender_wallet.wallet_id,
+                receiver_wallet_id=receiver_wallet.wallet_id,
+                amount=amount,
+                transaction_fee=transaction_fee,
+                description=description
+            )
+            db.session.add(transaction)
 
         return jsonify(transaction.to_dict()), 201
 
     except SQLAlchemyError as e:
         db.session.rollback()
-        db.session.remove()
         return jsonify({"error": str(e)}), 500
 
 
@@ -505,44 +545,41 @@ def get_transaction_history():
     if not user_id:
         return jsonify({'message': 'Unauthorized access. Please log in.'}), 401
 
-    # Get the optional 'date' parameter from query string
-    date = request.args.get('date')  # Format: 'YYYY-MM-DD'
-
-    # Validate the 'date' parameter
-    if not date:
-        return jsonify({'message': 'Date parameter is required. Format: YYYY-MM-DD.'}), 400
-
     try:
-        # Parse the date into a datetime object for comparison
-        date = datetime.strptime(date, '%Y-%m-%d')
-    except ValueError:
-        return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+        # Fetch the user object based on the user_id
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'message': 'User not found.'}), 404
 
-    # Build the query to fetch transactions related to the user
-    query = Transaction.query.filter_by(user_id=user_id, transaction_date=date)
+        if user.wallet:  # Ensure the user has a wallet
+            # Fetch all transactions related to the user's wallet (either sender or receiver)
+            transactions = Transaction.query.filter(
+                (Transaction.sender_wallet_id == user.wallet.wallet_id) |
+                (Transaction.receiver_wallet_id == user.wallet.wallet_id)
+            ).order_by(Transaction.transaction_date.desc()).all()
 
-    # Fetch the transactions from the database
-    transactions = query.order_by(Transaction.transaction_date.desc()).all()
+            # Prepare the transaction data
+            transaction_list = [
+                {
+                    'transaction_id': transaction.transaction_id,
+                    'sender_email': transaction.sender_wallet.user.email,  # Assuming user has an email field
+                    'receiver_email': transaction.recipient_email,
+                    'amount': transaction.amount,
+                    'transaction_date': transaction.transaction_date,
+                    'balance_after_transaction': transaction.balance_after_transaction
+                }
+                for transaction in transactions
+            ]
 
-    # Check if any transactions were found
-    if not transactions:
-        return jsonify({'message': 'No transactions found for the specified date.'}), 404
+            # Return the transaction data
+            return jsonify({
+                'message': 'Transaction history fetched successfully',
+                'transactions': transaction_list
+            }), 200
 
-    # Prepare the transaction data, including only the receiver's email, balance after transaction, and UUID
-    transaction_list = [
-        {
-            'transaction_id': transaction.transaction_id,
-            'receiver_email': transaction.recipient_email,
-            'balance_after_transaction': transaction.balance_after_transaction
-        }
-        for transaction in transactions
-    ]
-
-    return jsonify({
-        'message': 'Transaction history fetched successfully',
-        'transactions': transaction_list
-    }), 200
-
+        return jsonify({'message': 'User does not have an associated wallet!'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 ### ANALYTICS ROUTES ###
 

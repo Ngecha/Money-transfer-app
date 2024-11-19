@@ -131,7 +131,7 @@ class Beneficiary(db.Model):
 class Transaction(db.Model):
     __tablename__ = 'transactions'
 
-    transaction_id = db.Column(db.String(36), primary_key=True)
+    transaction_id = db.Column(db.String(36), primary_key=True, autoincrement=True)
     sender_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=False)
     receiver_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=False)
     recipient_email = db.Column(db.String(100), nullable=True)
