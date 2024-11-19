@@ -154,14 +154,31 @@ def update_profile(user_id):
     username = request.form.get('username')
     email = request.form.get('email')
     profile_image = request.files.get('profile_image')
+    remove_image = request.form.get('remove_image')
 
     # Update user profile
-    user.username = username
-    user.email = email
+    if username:
+        user.username = username
+    if email:
+        user.email = email
     if profile_image:
-        # Update the profile image path (handle the image upload)
-        user.profile_image = save_image(profile_image)  # Assuming save_image() handles file saving
+         # Remove old image if it's not the default
+        if user.profile_image and user.profile_image != 'static/uploads/default.png':
+            old_image_path = os.path.join(current_app.root_path, user.profile_image)
+            if os.path.exists(old_image_path):
+                os.remove(old_image_path)
 
+        # Save the new image
+        user.profile_image = save_image(profile_image)
+
+    elif remove_image == 'true':
+        # Remove the profile image
+        if user.profile_image and user.profile_image != 'static/uploads/default.png':
+            old_image_path = os.path.join(current_app.root_path, user.profile_image)
+            if os.path.exists(old_image_path):
+                os.remove(old_image_path)
+        user.profile_image = 'static/uploads/default.png'
+        
     db.session.commit()
 
     return jsonify({"message": "Profile updated successfully!"}), 200
@@ -316,43 +333,35 @@ def handle_transaction():
     user = get_current_user()
     if not user:
         return jsonify({"error": "Authentication required"}), 401
+    
+    # Check if a transaction is already in progress
+    if db.session.is_active:
+        db.session.rollback()
+        return jsonify({"error": "A transaction is already begun on this session."}), 400
+
 
     data = request.get_json()
-    sender_wallet_id = data.get('sender_wallet_id')
-    receiver_wallet_id = data.get('receiver_wallet_id')
     beneficiary_email = data.get('beneficiary_email')
     amount = data.get('amount')
-    description = data.get('description', '')
+    description = data.get('description', '')  # Optional field
 
-    # Validate input
-    if not amount or amount <= 0:
-        return jsonify({"error": "Invalid or missing amount!"}), 400
+    # Validate required fields
+    if not all([beneficiary_email, amount]):
+        return jsonify({"error": "Missing required fields!"}), 400
+    if amount <= 0:
+        return jsonify({"error": "Amount must be greater than zero!"}), 400
 
-    sender_wallet = None
-    receiver_wallet = None
-
-    # Fetch sender wallet
-    if sender_wallet_id:
-        sender_wallet = Wallet.query.get(sender_wallet_id)
-    else:
-        sender_wallet = Wallet.query.filter_by(user_id=user.user_id).first()
-
+    # Fetch sender wallet (from the currently logged-in user)
+    sender_wallet = Wallet.query.filter_by(user_id=user.user_id).first()
     if not sender_wallet:
         return jsonify({"error": "Sender wallet not found"}), 404
 
-    # Fetch receiver wallet
-    if receiver_wallet_id:
-        receiver_wallet = Wallet.query.get(receiver_wallet_id)
-    elif beneficiary_email:
-        beneficiary = Beneficiary.query.filter_by(beneficiary_email=beneficiary_email, is_active=True).first()
-        if not beneficiary:
-            return jsonify({"error": "Beneficiary not found or inactive"}), 404
-        receiver_wallet = Wallet.query.filter_by(user_id=beneficiary.user_id).first()
-
+    # Fetch receiver wallet using the beneficiary's email
+    receiver_wallet = Wallet.query.join(User).filter(User.email == beneficiary_email).first()
     if not receiver_wallet:
-        return jsonify({"error": "Receiver wallet not found"}), 404
+        return jsonify({"error": "Receiver wallet not found for the given email"}), 404
 
-    # Transaction fee calculation
+    # Transaction fee calculation (same as in your original route)
     if 0 < amount <= 500:
         transaction_fee = 0
     elif 501 <= amount <= 10000:
@@ -370,7 +379,7 @@ def handle_transaction():
 
     # Check if sender has enough funds
     if sender_wallet.balance < total_deduction:
-        return jsonify({"error": "Insufficient funds"}), 400
+        return jsonify({"error": "Insufficient funds!"}), 400
 
     try:
         # Perform transaction
@@ -380,17 +389,39 @@ def handle_transaction():
             db.session.add(sender_wallet)
             db.session.add(receiver_wallet)
 
+            # Create transaction record
             transaction = Transaction(
                 user_id=user.user_id,
                 sender_wallet_id=sender_wallet.wallet_id,
                 receiver_wallet_id=receiver_wallet.wallet_id,
                 amount=amount,
                 transaction_fee=transaction_fee,
-                description=description
+                description=description,
+                status='success',  # Assuming the transaction is successful
             )
             db.session.add(transaction)
 
-        return jsonify(transaction.to_dict()), 201
+        db.session.commit()
+
+        # Fetch the updated balance and transaction details
+        sender_balance_after = sender_wallet.balance
+        receiver_balance_after = receiver_wallet.balance
+        transaction_id = transaction.id  # Automatically generated transaction ID
+        transaction_date = transaction.created_at  # Timestamp of the transaction
+
+        # Prepare the response with all required fields
+        response = {
+            "transaction_id": transaction_id,
+            "amount": amount,
+            "transaction_fee": transaction_fee,
+            "sender_balance_after": sender_balance_after,
+            "receiver_balance_after": receiver_balance_after,
+            "status": transaction.status,
+            "transaction_date": transaction_date,
+            "beneficiary_email": beneficiary_email
+        }
+
+        return jsonify(response), 201
 
     except SQLAlchemyError as e:
         db.session.rollback()
