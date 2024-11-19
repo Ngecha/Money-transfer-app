@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
+from decimal import Decimal
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import validates
 from db import db
 import re
+import uuid
 
 class User(db.Model):
     __tablename__= 'users'
@@ -46,19 +49,7 @@ class User(db.Model):
             self.email = email
         if profile_image:
             self.profile_image = profile_image
-    
-    #  # Set password reset token
-    # def set_reset_token(self, token, expiry_hours):
-    #     if isinstance(token, bytes):
-    #         self.reset_token = token.decode('utf-8')  # decode bytes to string
-    #     else:
-    #         self.reset_token = token
-    #     self.reset_token_expiry = datetime.utcnow() + timedelta(hours=expiry_hours)
 
-    # # Clear password reset token after use 
-    # def clear_reset_token(self):
-    #     self.reset_token = None
-    #     self.reset_token_expiry = None
 
     @validates('phone_number')
     def validate_phone_number(self, key, value):
@@ -76,18 +67,17 @@ class User(db.Model):
             raise ValueError('Invalid email address')
         return value
 
-
     def to_dict(self):
         return {
             'user_id': self.user_id,
             'username': self.username,
             'email': self.email,
             'phone_number': self.phone_number,
-            # 'role': self.role,
-            # 'status': self.status,
-            # 'profile_image': self.profile_image,
-            # 'created_at': self.created_at,
-            # 'updated_at': self.updated_at
+            'role': self.role,
+            'status': self.status,
+            'profile_image': self.profile_image,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at
         }
 
 
@@ -160,20 +150,39 @@ class Beneficiary(db.Model):
 class Transaction(db.Model):
     __tablename__ = 'transactions'
 
-    transaction_id = db.Column(db.Integer, primary_key=True)
-    sender_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=False)
+    transaction_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    sender_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=True)
     receiver_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=False)
+    recipient_email = db.Column(db.String(100), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
-    amount = db.Column(db.Float, nullable=False)
+    amount = db.Column(db.Float, nullable=False) 
     transaction_date = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(20), default='completed')
+    balance_after_transaction = db.Column(db.Float, nullable=True)
+    transaction_type = db.Column(db.String(20), nullable=False)
     transaction_fee = db.Column(db.Float, nullable=True)
     description = db.Column(db.String(200))
     is_reversed = db.Column(db.Boolean, default=False)
 
-    # Reverse transaction
+    # Reverse transaction and adjust balances
     def reverse_transaction(self):
-        self.is_reversed = True
+        sender_wallet = Wallet.query.get(self.sender_wallet_id)
+        receiver_wallet = Wallet.query.get(self.receiver_wallet_id)
+
+        if sender_wallet and receiver_wallet and not self.is_reversed:
+            # Reverse the transaction by crediting the sender and debiting the receiver
+            sender_wallet.balance += self.amount
+            receiver_wallet.balance -= self.amount
+            self.is_reversed = True
+
+            try:
+                db.session.add(sender_wallet)
+                db.session.add(receiver_wallet)
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                raise ValueError("Failed to reverse the transaction due to integrity error.")
+
 
     def to_dict(self):
         return {
@@ -181,14 +190,68 @@ class Transaction(db.Model):
             'sender_wallet_id': self.sender_wallet_id,
             'receiver_wallet_id': self.receiver_wallet_id,
             'user_id': self.user_id,
+            'recipient_email': self.recipient_email,
             'amount': self.amount,
             'transaction_date': self.transaction_date,
             'status': self.status,
             'transaction_fee': self.transaction_fee,
+            'balance_after_transaction': self.balance_after_transaction,
+            'transaction_type': self.transaction_type,
             'description': self.description,
             'is_reversed': self.is_reversed
         }
     
+    @classmethod
+    def create_transaction(cls, sender_wallet, receiver_wallet, user_id, amount, description=None, recipient_email=None, transaction_fee=Decimal('0.0'), transaction_type='payment'):
+        # Generate a unique transaction reference using UUID
+        
+        transaction_reference = str(uuid.uuid4())
+
+         # Convert amount to Decimal for accuracy
+        amount = Decimal(amount)
+        transaction_fee = Decimal(transaction_fee)
+        total_amount = amount + transaction_fee
+
+        if sender_wallet.balance < total_amount:
+            raise ValueError("Insufficient funds")
+
+        # Deduct the total amount from sender's wallet and add to reciever
+        sender_wallet.balance -= total_amount
+        receiver_wallet.balance += amount
+
+        # Create a transaction record
+        transaction = cls(
+            transaction_id=transaction_reference,
+            sender_wallet_id=sender_wallet.wallet_id,
+            receiver_wallet_id=receiver_wallet.wallet_id,
+            user_id=user_id,
+            recipient_email=recipient_email,
+            amount=amount,
+            transaction_fee=transaction_fee,
+            balance_after_transaction=sender_wallet.balance,
+            transaction_type=transaction_type,
+            description=description,
+            status='completed'
+        )
+
+        # Save changes to the database
+        try:
+            with db.session.begin_nested():
+                db.session.add(sender_wallet)
+                db.session.add(receiver_wallet)
+                db.session.add(transaction)
+            db.session.commit()
+        except IntegrityError as e:
+            db.session.rollback()
+            raise ValueError(f"Transaction failed: {str(e)}")
+        
+        return transaction
+
+    @staticmethod
+    def get_all_transactions():
+        # Fetch all transactions sorted by the most recent
+        transactions = Transaction.query.order_by(Transaction.transaction_date.desc()).all()
+        return [transaction.to_dict() for transaction in transactions]
 
 # TransactionSummary Model - Provides summary analytics for admins
 class TransactionSummary(db.Model):
