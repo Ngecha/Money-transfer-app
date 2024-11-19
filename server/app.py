@@ -559,17 +559,29 @@ def get_transaction_history():
             ).order_by(Transaction.transaction_date.desc()).all()
 
             # Prepare the transaction data
-            transaction_list = [
-                {
+            transaction_list = []
+            for transaction in transactions:
+                transaction_data = {
                     'transaction_id': transaction.transaction_id,
-                    'sender_email': transaction.sender_wallet.user.email,  # Assuming user has an email field
-                    'receiver_email': transaction.recipient_email,
                     'amount': transaction.amount,
                     'transaction_date': transaction.transaction_date,
                     'balance_after_transaction': transaction.balance_after_transaction
                 }
-                for transaction in transactions
-            ]
+
+                # Handle sender_email and receiver_email, making sure to check if they exist
+                if transaction.sender_wallet:
+                    sender = transaction.sender_wallet.user
+                    if sender:
+                        transaction_data['sender_email'] = sender.email
+                    else:
+                        transaction_data['sender_email'] = 'N/A'  # Fallback if no sender user
+
+                if transaction.receiver_wallet:
+                    transaction_data['receiver_email'] = transaction.recipient_email or 'N/A'
+                else:
+                    transaction_data['receiver_email'] = 'N/A'  # Fallback if no receiver wallet
+
+                transaction_list.append(transaction_data)
 
             # Return the transaction data
             return jsonify({

@@ -1,8 +1,8 @@
-"""Initial migration
+"""initial migration
 
-Revision ID: 68c3fc971bb1
+Revision ID: 6975e4c31dd3
 Revises: 
-Create Date: 2024-11-18 23:46:48.307932
+Create Date: 2024-11-19 07:35:23.935853
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '68c3fc971bb1'
+revision = '6975e4c31dd3'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -74,7 +74,7 @@ def upgrade():
     sa.PrimaryKeyConstraint('wallet_id')
     )
     op.create_table('transactions',
-    sa.Column('transaction_id', sa.String(length=36), nullable=False),
+    sa.Column('transaction_id', sa.String(length=36), autoincrement=True, nullable=False),
     sa.Column('sender_wallet_id', sa.Integer(), nullable=False),
     sa.Column('receiver_wallet_id', sa.Integer(), nullable=False),
     sa.Column('recipient_email', sa.String(length=100), nullable=True),
