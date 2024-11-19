@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import SQLAlchemyError
 from flask_login import LoginManager, login_required, current_user
 from flask_migrate import Migrate
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from flask_login import UserMixin
 from functools import wraps
@@ -14,12 +14,16 @@ from flask_cors import CORS
 
 #create app
 app= Flask(__name__)
-app.config['SECRET_KEY'] = 'your_secret_key'
+app.config['SECRET_KEY'] = ' 310f8c498a770216e990b1755acab5208908bdca232bfb85'
 app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///app.db"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
-CORS(app)
+app.config['SESSION_COOKIE_NAME'] = 'session_id'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=45)  # Set session timeout
+
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
 
 #initialize extentions with the app
 db.init_app(app)
@@ -40,17 +44,19 @@ def verify_password(password, hashed):
 
 def get_current_user():
     user_id = session.get('user_id')
+    print(f"Current user ID: {user_id}")
     if user_id:
+        print(f"Current user ID: {user_id}")
         return User.query.get(user_id)
     return None
 
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            return jsonify({'message': 'Unauthorized access'}), 401
-        return f(*args, **kwargs)
-    return decorated_function
+# def login_required(f):
+#     @wraps(f)
+#     def decorated_function(*args, **kwargs):
+#         if 'user_id' not in session:
+#             return jsonify({'message': 'Unauthorized access'}), 401
+#         return f(*args, **kwargs)
+#     return decorated_function
 
 def admin_required(f):
     @wraps(f)
@@ -128,6 +134,7 @@ def login():
         if user and user.check_password(password):
             session['user_id'] = user.user_id
             session['username'] = user.username
+            print(f"User {user.username} logged in with session: {session}") 
             return jsonify({"token": "fake-jwt-token", "username": user.username, "user_id": user.user_id})
         return {"error": "Invalid credentials"}, 401
 
@@ -246,10 +253,15 @@ def create_wallet():
 @app.route('/wallet/fund', methods=['POST'])
 @login_required
 def fund_wallet():
+    print(f"Session data: {session}")
+    print(f"Current User: {current_user}")
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'User is not authenticated'}), 403
     user = get_current_user()
-    if not user:
-        return jsonify({'message': 'Unauthorized'}), 401
-
+    
+    # if not user:
+    #     return jsonify({'error': 'User not found'}), 404
+    
     data = request.json
     wallet_id = data.get('wallet_id')
     amount = data.get('amount')
@@ -639,6 +651,54 @@ def get_user_analytics():
     user_id = request.args.get('user_id')
     analytics = Analytics.query.filter_by(user_id=user_id).all()
     return jsonify([analytic.to_dict() for analytic in analytics]), 200
+
+@app.route('/wallet/transfer', methods=['POST'])
+def transfer():
+    data = request.get_json()
+    sender_id = data.get('sender_id')
+    receiver_id = data.get('receiver_id')
+    amount = data.get('amount')
+
+    if not sender_id or not receiver_id or not amount:
+        return jsonify({"message": "Invalid input"}), 400
+
+    sender = Wallet.query.filter_by(user_id=sender_id).first()
+    receiver = Wallet.query.filter_by(user_id=receiver_id).first()
+
+    if not sender or not receiver:
+        return jsonify({"message": "Sender or receiver not found"}), 404
+
+    if sender.balance < amount:
+        return jsonify({"message": "Insufficient funds"}), 400
+
+    sender.balance -= amount
+    receiver.balance += amount
+
+    db.session.commit()
+
+    return jsonify({"message": "Transfer successful", "sender_balance": sender.balance}), 200
+
+@app.route('/wallet/withdraw', methods=['POST'])
+def withdraw():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    amount = data.get('amount')
+
+    if not user_id or not amount:
+        return jsonify({"message": "Invalid input"}), 400
+
+    wallet = Wallet.query.filter_by(user_id=user_id).first()
+    if not wallet:
+        return jsonify({"message": "Wallet not found"}), 404
+
+    if wallet.balance < amount:
+        return jsonify({"message": "Insufficient funds"}), 400
+
+    wallet.balance -= amount
+    db.session.commit()
+
+    return jsonify({"message": "Withdrawal successful", "balance": wallet.balance}), 200
+
 
 # Run the Flask app
 if __name__ == "__main__":
