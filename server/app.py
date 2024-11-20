@@ -379,7 +379,6 @@ def handle_transaction():
         # Update balances of sender and receiver
         sender_wallet.balance -= total_deduction
         receiver_wallet.balance += amount
-        wallet.balance -= amount
         # db.session.add(sender_wallet)
         # db.session.add(receiver_wallet)
         # db.session.commit()
@@ -393,6 +392,7 @@ def handle_transaction():
                 transaction_fee=transaction_fee,
                 description=description,
                 transaction_type="Transfer"
+                balance_after_transaction=walle
             )
 
         db.session.add(transaction)
