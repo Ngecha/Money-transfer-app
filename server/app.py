@@ -20,12 +20,31 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
+# Configure Flask-Mail
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'  # Replace with your mail server
+app.config['MAIL_PORT'] = 587  # Common port for TLS
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'nickkorir08@gmail.com'  # Your email address
+app.config['MAIL_PASSWORD'] = 'dvsa oack vhge avbh'  # Your email password or app-specific password
+app.config['MAIL_DEFAULT_SENDER'] = 'nickkorir08@gmail.com'
+
+
 #initialize extentions with the app
 db.init_app(app)
 migrate = Migrate(app, db)
+mail = Mail(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
+# Flask-Mail helper function
+def send_email(subject, recipient, body):
+    try:
+        msg = Message(subject=subject, recipients=[recipient], body=body)
+        mail.send(msg)
+        print(f"Email sent to {recipient}")
+    except Exception as e:
+        print(f"Failed to send email: {str(e)}")
 
 from models import User, Wallet, Transaction, Beneficiary, TransactionSummary, Analytics
 
@@ -313,36 +332,53 @@ def withdraw_wallet():
     wallet_id = data.get('wallet_id')
     amount = data.get('amount')
 
-    wallet = Wallet.query.get(wallet_id)
-    if wallet and wallet.balance >= amount:  # Ensure there's enough balance to withdraw
-        try:
-            # Withdraw funds
-            wallet.balance -= amount
+    wallet = Wallet.query.filter_by(user_id=user.user_id, wallet_id=wallet_id).first()
+    if not wallet:
+        return jsonify({'error': 'Wallet not found'}), 404
 
-            # Record the transaction
-            transaction = Transaction(
-                sender_wallet_id=wallet.wallet_id,  # The wallet is the sender
-                receiver_wallet_id=None,  # No receiver for a withdrawal (or could be an external account)
-                amount=amount,
-                transaction_date=datetime.now(),
-                balance_after_transaction=wallet.balance,
-                transaction_type='withdrawal'  # Mark this as a withdrawal
+    if wallet.balance < amount:
+        return jsonify({'error': 'Insufficient balance'}), 400
+
+    try:
+        # Withdraw funds
+        wallet.balance -= amount
+
+        # Record the transaction
+        transaction = Transaction(
+            sender_wallet_id=wallet.wallet_id,  # The wallet is the sender
+            receiver_wallet_id=None,  # No receiver for a withdrawal
+            amount=amount,
+            transaction_date=datetime.now(),
+            balance_after_transaction=wallet.balance,
+            transaction_type='withdrawal'  # Mark this as a withdrawal
+        )
+
+        db.session.add(transaction)
+        db.session.commit()
+
+        # Send email notification
+        send_email(
+            subject="Withdrawal Successful!",
+            recipient=user.email,
+            body=(
+                f"Hi {user.username},\n\n"
+                f"You have successfully withdrawn ${amount:.2f} from your wallet.\n"
+                f"New Balance: ${wallet.balance:.2f}\n\n"
+                "Thank you for using our service."
             )
+        )
 
-            db.session.add(transaction)
-            db.session.commit()
+        return jsonify({
+            'message': 'Withdrawal successful',
+            'balance': wallet.balance,
+            'transaction': transaction.to_dict()  # Return the transaction details as well
+        }), 200
 
-            return jsonify({
-                'message': 'Withdrawal successful',
-                'balance': wallet.balance,
-                'transaction': transaction.to_dict()  # Return the transaction details as well
-            }), 200
-        except SQLAlchemyError as e:
-            db.session.rollback()
-            return jsonify({'error': str(e)}), 500
-    else:
-        return jsonify({'message': 'Failed to withdraw from wallet'}), 400
-# Route to get User's Wallet
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+    
+    #  Route to get User's Wallet
 @app.route('/wallet/<int:id>', methods=['GET'])
 def get_wallet(id):
     user = User.query.get(id)
@@ -362,13 +398,6 @@ def handle_transaction():
     user = get_current_user()
     if not user:
         return jsonify({"error": "Authentication required"}), 401
-    
-    # Check if a transaction is already in progress
-    if db.session.is_active:
-        db.session.rollback()
-        db.session.remove()
-        return jsonify({"error": "A transaction is already begun on this session."}), 400
-
 
     data = request.get_json()
     beneficiary_email = data.get('beneficiary_email')
@@ -432,6 +461,19 @@ def handle_transaction():
             db.session.add(transaction)
 
         db.session.commit()
+
+        # Add email notification
+        send_email(
+            subject="Transaction Successful!",
+            recipient=user.email,
+            body=(
+                f"Hi {user.username},\n\n"
+                f"You sent ${amount:.2f} to {beneficiary_email}.\n"
+                f"Transaction Fee: ${transaction_fee:.2f}\n"
+                f"Remaining Balance: ${sender_wallet.balance:.2f}\n\n"
+                "Thank you for using our service."
+            )
+        )
 
         # Fetch the updated balance and transaction details
         sender_balance_after = sender_wallet.balance
@@ -498,6 +540,19 @@ def reverse_transaction(transaction_id):
             db.session.add(sender_wallet)
             db.session.add(receiver_wallet)
             db.session.add(transaction)
+
+         # Add email notification
+        send_email(
+            subject="Transaction Reversed!",
+            recipient=user.email,
+            body=(
+                f"Hi {user.username},\n\n"
+                f"Your transaction of ${transaction.amount:.2f} to {receiver_wallet.user.email} "
+                f"has been successfully reversed.\n"
+                f"Your updated balance is ${sender_wallet.balance:.2f}.\n\n"
+                "Thank you for using our service."
+            )
+        )
 
         return jsonify({"message": "Transaction reversed successfully"}), 200
 
