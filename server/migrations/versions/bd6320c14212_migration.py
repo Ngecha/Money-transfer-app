@@ -1,8 +1,8 @@
-"""initial migration
+"""migration
 
-Revision ID: 1911f6c36664
+Revision ID: bd6320c14212
 Revises: 
-Create Date: 2024-11-19 11:13:10.732550
+Create Date: 2024-11-20 15:26:10.088304
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '1911f6c36664'
+revision = 'bd6320c14212'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -76,7 +76,7 @@ def upgrade():
     op.create_table('transactions',
     sa.Column('transaction_id', sa.String(length=36), nullable=False),
     sa.Column('sender_wallet_id', sa.Integer(), nullable=True),
-    sa.Column('receiver_wallet_id', sa.Integer(), nullable=False),
+    sa.Column('receiver_wallet_id', sa.Integer(), nullable=True),
     sa.Column('recipient_email', sa.String(length=100), nullable=True),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('amount', sa.Float(), nullable=False),

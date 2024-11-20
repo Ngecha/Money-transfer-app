@@ -266,9 +266,9 @@ def fund_wallet():
 @app.route('/wallet/withdraw', methods=['POST'])
 def withdraw_wallet():
     data = request.json
+    user_id=data.get('user_id')
     wallet_id = data.get('wallet_id')
     amount = data.get('amount')
-    print(amount)
 
     wallet = Wallet.query.filter_by(wallet_id=wallet_id).first()
     if wallet and wallet.balance >= amount:  # Ensure there's enough balance to withdraw
@@ -278,6 +278,7 @@ def withdraw_wallet():
 
             # Record the transaction
             transaction = Transaction(
+                user_id=user_id,
                 sender_wallet_id=wallet.wallet_id,  # The wallet is the sender
                 receiver_wallet_id=None,  # No receiver for a withdrawal (or could be an external account)
                 amount=amount,
@@ -333,7 +334,6 @@ def handle_transaction():
         sender_wallet = Wallet.query.filter_by(wallet_id=sender_wallet_id).first()
     else:
         sender_wallet = Wallet.query.filter_by(user_id=user_id).first()
-    print(sender_wallet.balance)
 
     if not sender_wallet:
         return jsonify({"error": "Sender wallet not found"}), 404
@@ -341,14 +341,16 @@ def handle_transaction():
     # Fetch receiver wallet
     if receiver_wallet_id:
         receiver_wallet = Wallet.query.filter_by(wallet_id=receiver_wallet_id).first()
-    elif beneficiary_email:
+    else: 
+        beneficiary_email
         beneficiary = Beneficiary.query.filter_by(beneficiary_email=beneficiary_email).first()
         if not beneficiary:
             return jsonify({"error": "Beneficiary not found or inactive"}), 404
         beneficiary_user=User.query.filter_by(email=beneficiary_email).first()
         receiver_wallet = Wallet.query.filter_by(user_id=beneficiary_user.user_id).first()
 
-    print(beneficiary_user.username)
+    
+
 
     if not receiver_wallet:
         return jsonify({"error": "Receiver wallet not found"}), 404
@@ -377,6 +379,7 @@ def handle_transaction():
         # Update balances of sender and receiver
         sender_wallet.balance -= total_deduction
         receiver_wallet.balance += amount
+        wallet.balance -= amount
         # db.session.add(sender_wallet)
         # db.session.add(receiver_wallet)
         # db.session.commit()
