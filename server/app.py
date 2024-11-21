@@ -1,44 +1,62 @@
-from flask import Flask, request, jsonify, session,make_response
+from flask import Flask, request, jsonify, redirect, url_for, session,make_response
+from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import SQLAlchemyError
 from flask_login import LoginManager, login_required
 from flask_migrate import Migrate
+from flask_mail import Mail, Message
 from datetime import datetime
 from werkzeug.utils import secure_filename
+from flask_login import UserMixin
+from functools import wraps
+from dotenv import load_dotenv
+import os
 import bcrypt
 from db import db
-from flask_cors import CORS
-
 
 #create app
 app= Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
-app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///app.db"
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
+
+load_dotenv()
+
+# Flask-Mail configuration using environment variables
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT'))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS') == 'True'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
+
 CORS(app)
+
 
 #initialize extentions with the app
 db.init_app(app)
 migrate = Migrate(app, db)
+mail = Mail(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+# Flask-Mail helper function
+def send_email(subject, recipient, body):
+    try:
+        msg = Message(subject=subject, recipients=[recipient], body=body)
+        mail.send(msg)
+        print(f"Email sent to {recipient}")
+    except Exception as e:
+        print(f"Failed to send email: {str(e)}")
 
 # from resources.mpesa import Mpesa, MpesaCallback
 
 
 # api.add_resource(Mpesa, "/payment")
 # api.add_resource(MpesaCallback, '/mpesa-callback')
-
-
-
-
-
-
-
 
 from models import User, Wallet, Transaction, Beneficiary, TransactionSummary, Analytics
 
@@ -84,58 +102,57 @@ def register():
     existing_user = User.query.filter((User.email == email) | (User.phone_number == phone_number)).first()
     if existing_user:
         return jsonify({'error': 'User with this email or phone number already exists'}), 409
-
-     # Create a new user and a wallet for the user
-
+    
     try:
-
+        # Create a new user and a wallet for the user
         new_user = User(username=username, email=email, phone_number=phone_number, password=password, profile_image=profile_image)
         db.session.add(new_user)
         db.session.commit()
 
-        new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0)
+        new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0, currency="KES")
         db.session.add(new_wallet)
         db.session.commit()
 
-    except ValueError:
-        return jsonify({"message": "Wrong phone number or email format"})
+        # Send welcome email
+        send_email(
+            subject="Welcome to Money Transfer App!",
+            recipient=email,
+            body=f"Hi {username},\n\nWelcome to Money Transfer App! Start managing your money efficiently today."
+        )
 
-    return jsonify({
-        "message": "User registered successfully!",
-        "user": new_user.to_dict(),
-        "wallet": new_wallet.to_dict()   
-    }), 201
+        return jsonify({
+            "message": "User registered successfully!",
+            "user": new_user.to_dict(),
+            "wallet": new_wallet.to_dict()
+        }), 201
 
-
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
   
 # User Login Route 
 @app.route('/login', methods=['POST'])
 def login():
-        email = request.json.get("email")
-        password = request.json.get("password")
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
 
-        user = User.query.filter_by(email=email).first()
+    user = User.query.filter_by(email=email).first()
+    if user and user.check_password(password):
+        session['user_id'] = user.user_id
+        return jsonify({'message': 'Login successful', 'user': user.to_dict()}), 200
+    return jsonify({'message': 'Invalid email or password'}), 401
 
-        if user and user.check_password(password):
-            session['user_id'] = user.user_id
-            session['username'] = user.username
-            return jsonify({"token": "fake-jwt-token", "username": user.username, "user_id": user.user_id})
-        return {"error": "Invalid credentials"}, 401
-
-# User details route
-@app.route('/user/<int:id>', methods=['GET'])
-def get_user(id):
-    user = User.query.filter_by(user_id=id).first()
-    wallets = Wallet.query.filter_by(user_id=id).all()  
-    
-    if user:
-        wallets_data = [wallet.to_dict() for wallet in wallets]
-        return jsonify({
-            "user": user.to_dict(),
-            "wallets": wallets_data,  
-        }), 200
-    return jsonify({"error": "User not found!"}), 404
-
+  
+# update profile
+@app.route('/update-profile/<int:user_id>', methods=['POST'])
+def update_profile(user_id):
+    # Check if the user is logged in
+    if 'user_id' not in session:
+        return jsonify({"error": "Authentication required!"}), 401
+    # Ensure the logged-in user matches the user_id in the URL
+    if session['user_id'] != user_id:
+        return jsonify({"error": "You can only update your own profile"}), 403
 
 # Getting all Users
 @app.route("/users", methods=['GET'])
@@ -156,12 +173,12 @@ def get_users():
 @app.route('/update-profile/<int:id>', methods=['POST'])
 def update_profile(id):
     user = User.query.filter(user_id=id)
-
     username = request.form.get('username')
     email = request.form.get('email')
     profile_image = request.files.get('profile_image')
     remove_image = request.form.get('remove_image')
 
+    # Update user profile
     if username:
         user.username = username
     if email:
@@ -205,10 +222,9 @@ def view_profile(id):
 
 # User Logout
 @app.route('/logout', methods=['POST'])
-def logout():
+def logout_user():
     session.pop('user_id', None)
-    session.pop('username', None)
-    return {"message": "Logged out successfully"}, 200
+    return jsonify({'message': 'Logged out successfully'}), 200
 
 ### WALLET ROUTES ###
 # Create a Wallet
@@ -261,11 +277,24 @@ def fund_wallet():
         db.session.add(transaction)
         db.session.commit()
 
+        # Send email notification
+        send_email(
+            subject="Wallet Funded Successfully!",
+            recipient=user.email,
+            body=(
+                f"Hi {user.username},\n\n"
+                f"You have successfully funded your wallet with KES{amount:.2f}.\n"
+                f"New Balance: KES{wallet.balance:.2f}\n\n"
+                "Thank you for using our service."
+            )
+        )
+
         return jsonify({
             'message': 'Wallet funded successfully',
             'balance': wallet.balance,
             'transaction': transaction.to_dict()  # Return the transaction details as well
         }), 200
+
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -273,6 +302,10 @@ def fund_wallet():
 # Withdraw from Wallet
 @app.route('/wallet/withdraw', methods=['POST'])
 def withdraw_wallet():
+    user = get_current_user()
+    if not user:
+        return jsonify({'message': 'Unauthorized'}), 401
+
     data = request.json
     user_id=data.get('user_id')
     wallet_id = data.get('wallet_id')
@@ -294,10 +327,20 @@ def withdraw_wallet():
                 balance_after_transaction=wallet.balance,
                 transaction_fee=0,
                 transaction_type='withdrawal'  # Mark this as a withdrawal
+              
+              
+              # Send email notification
+        send_email(
+            subject="Withdrawal Successful!",
+            recipient=user.email,
+            body=(
+                f"Hi {user.username},\n\n"
+                f"You have successfully withdrawn KES{amount:.2f} from your wallet.\n"
+                f"New Balance: KES{wallet.balance:.2f}\n\n"
+                "Thank you for using our service."
+              
             )
-
-            db.session.add(transaction)
-            db.session.commit()
+        )
 
             return jsonify({
                 'message': 'Withdrawal successful',
@@ -318,8 +361,6 @@ def get_wallet(id):
     wallets_data = [wallet.to_dict() for wallet in wallets]
     return jsonify({"wallets": wallets_data}), 200
 
-
-
 ### TRANSACTION ROUTES ###
 @app.route('/transaction', methods=['POST'])
 def handle_transaction():
@@ -329,8 +370,13 @@ def handle_transaction():
     receiver_wallet_id = data.get('receiver_wallet_id')
     beneficiary_email = data.get('beneficiary_email')
     amount = data.get('amount')
-    description = data.get('description', '')
+    description = data.get('description', '')  # Optional field
 
+    # Validate required fields
+    if not all([beneficiary_email, amount]):
+        return jsonify({"error": "Missing required fields!"}), 400
+    if amount <= 0:
+        return jsonify({"error": "Amount must be greater than zero!"}), 400
     # Validate input
     if not amount or amount <= 0:
         return jsonify({"error": "Enter Amount!"}), 400
@@ -344,6 +390,8 @@ def handle_transaction():
     else:
         sender_wallet = Wallet.query.filter_by(user_id=user_id).first()
 
+    # Fetch sender wallet (from the currently logged-in user)
+    sender_wallet = Wallet.query.filter_by(user_id=user.user_id).first()
     if not sender_wallet:
         return jsonify({"error": "Sender wallet not found"}), 404
 
@@ -358,13 +406,11 @@ def handle_transaction():
         beneficiary_user=User.query.filter_by(email=beneficiary_email).first()
         receiver_wallet = Wallet.query.filter_by(user_id=beneficiary_user.user_id).first()
 
-    
-
 
     if not receiver_wallet:
-        return jsonify({"error": "Receiver wallet not found"}), 404
+        return jsonify({"error": "Receiver wallet not found for the given email"}), 404
 
-    # Transaction fee calculation
+    # Transaction fee calculation (same as in your original route)
     if 0 < amount <= 500:
         transaction_fee = 0
     elif 501 <= amount <= 10000:
@@ -382,7 +428,7 @@ def handle_transaction():
 
     # Check if sender has enough funds
     if sender_wallet.balance < total_deduction:
-        return jsonify({"error": "Insufficient funds"}), 400
+        return jsonify({"error": "Insufficient funds!"}), 400
 
     try:
         # Update balances of sender and receiver
@@ -400,6 +446,51 @@ def handle_transaction():
                 amount=amount,
                 transaction_fee=transaction_fee,
                 description=description,
+                status='success',  # Assuming the transaction is successful
+            )
+            db.session.add(transaction)
+
+        db.session.commit()
+
+        # Add email notification
+        send_email(
+            subject="Transaction Successful!",
+            recipient=user.email,
+            body=(
+                f"Hi {user.username},\n\n"
+                f"You sent KES{amount:.2f} to {beneficiary_email}.\n"
+                f"Transaction Fee: KES{transaction_fee:.2f}\n"
+                f"Remaining Balance: KES{sender_wallet.balance:.2f}\n\n"
+                "Thank you for using our service."
+            )
+        )
+
+        # Fetch the updated balance and transaction details
+        sender_balance_after = sender_wallet.balance
+        receiver_balance_after = receiver_wallet.balance
+        transaction_id = transaction.id  # Automatically generated transaction ID
+        transaction_date = transaction.created_at  # Timestamp of the transaction
+
+        # Prepare the response with all required fields
+        response = {
+            "transaction_id": transaction_id,
+            "amount": amount,
+            "transaction_fee": transaction_fee,
+            "sender_balance_after": sender_balance_after,
+            "receiver_balance_after": receiver_balance_after,
+            "status": transaction.status,
+            "transaction_date": transaction_date,
+            "beneficiary_email": beneficiary_email
+        }
+
+        return jsonify(response), 201
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        db.session.remove()
                 transaction_type="Transfer",
                 balance_after_transaction=sender_wallet.balance,
                 recipient_email=beneficiary_user.email
@@ -419,10 +510,21 @@ def handle_transaction():
                 transaction_type="Transfer",
                 balance_after_transaction=receiver_wallet.balance
             )
-
-
         db.session.add(receiver_transaction)
         db.session.commit()
+
+         # Add email notification
+        send_email(
+            subject="Transaction Reversed!",
+            recipient=user.email,
+            body=(
+                f"Hi {user.username},\n\n"
+                f"Your transaction of KES{transaction.amount:.2f} to {receiver_wallet.user.email} "
+                f"has been successfully reversed.\n"
+                f"Your updated balance is KES{sender_wallet.balance:.2f}.\n\n"
+                "Thank you for using our service."
+            )
+        )
 
         return jsonify(sender_transaction.to_dict()), 201
 
@@ -434,7 +536,7 @@ def handle_transaction():
 # Route to get all transactions of a user 
 @app.route('/transactions/<int:id>', methods=['GET'])
 def get_transactions(id):
-    user = db.session.get(User, id)
+    user = User.query.get(id)
     if user:
         if user.wallet:  # Ensure the user has a wallet
             transactions = Transaction.query.filter(
@@ -472,6 +574,7 @@ def add_beneficiary():
     data = request.get_json()
     beneficiary_email = data.get('beneficiary_email')
     
+
     # Validate the input
     if not beneficiary_email :
         return jsonify({"error": "Beneficiary email is required"}), 400
@@ -500,20 +603,40 @@ def add_beneficiary():
 # Route to get all beneficiaries of a user
 @app.route('/beneficiaries/<int:id>', methods=['GET'])
 def get_beneficiaries(id):
-    user = db.session.get(User, id)
+    user = User.query.get(id)
     if user:
         beneficiaries = Beneficiary.query.filter_by(user_id=id).all()
         return jsonify([beneficiary.to_dict() for beneficiary in beneficiaries]), 200
     return jsonify({"error": "User not found!"}), 404
 
 # Route to delete a beneficiary
-@app.route('/beneficiary/<int:id>', methods=['DELETE'])
-def delete_beneficiary(id):
+@app.route('/beneficiary/<int:beneficiary_id>', methods=['DELETE'])
+def delete_beneficiary(beneficiary_id):
+    # Check if the user is authenticated (get the current user, similar to the add beneficiary route)
+    user = get_current_user()
+    if not user:
+        return jsonify({'message': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    beneficiary_email = data.get('beneficiary_email')
+
+    if not beneficiary_email:
+        return jsonify({'message': 'Beneficiary email is required'}), 400
+
+    # Find the beneficiary by using email and ensure it was added the current user
+    beneficiary = Beneficiary.query.filter_by(user_id=user.user_id, beneficiary_email=beneficiary_email).first()
+
+    if not beneficiary:
+        return jsonify({'message': 'Beneficiary not found'}), 404
+
+    # Perform a soft delete (set 'is_active' to False)
+    beneficiary.soft_delete()
     
-    beneficiary = Beneficiary.query.filter(Beneficiary.beneficiary_id == id).first()
-    db.session.delete(beneficiary)
+    # Commit the changes to the database
     db.session.commit()
-    return make_response({'message': 'beneficiary successfully deleted'}, 200)
+
+    # Return a success message
+    return jsonify({'message': 'Beneficiary deleted successfully', 'beneficiary': beneficiary.to_dict()}), 200
 
 # Route to fetch transaction history for a specific user
 @app.route('/transactions/history', methods=['GET'])
