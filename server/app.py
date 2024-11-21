@@ -1,12 +1,9 @@
-from flask import Flask, request, jsonify, redirect, url_for, session,make_response
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, request, jsonify, session,make_response
 from sqlalchemy.exc import SQLAlchemyError
-from flask_login import LoginManager, login_required, current_user
+from flask_login import LoginManager, login_required
 from flask_migrate import Migrate
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from flask_login import UserMixin
-from functools import wraps
 import bcrypt
 from db import db
 from flask_cors import CORS
@@ -28,6 +25,20 @@ migrate = Migrate(app, db)
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
+
+# from resources.mpesa import Mpesa, MpesaCallback
+
+
+# api.add_resource(Mpesa, "/payment")
+# api.add_resource(MpesaCallback, '/mpesa-callback')
+
+
+
+
+
+
+
 
 from models import User, Wallet, Transaction, Beneficiary, TransactionSummary, Analytics
 
@@ -114,7 +125,7 @@ def login():
 # User details route
 @app.route('/user/<int:id>', methods=['GET'])
 def get_user(id):
-    user = request.json.get('user_id')
+    user = User.query.filter_by(user_id=id).first()
     wallets = Wallet.query.filter_by(user_id=id).all()  
     
     if user:
@@ -122,13 +133,11 @@ def get_user(id):
         return jsonify({
             "user": user.to_dict(),
             "wallets": wallets_data,  
-            "profile_image": user.profile_image 
         }), 200
     return jsonify({"error": "User not found!"}), 404
 
 
 # Getting all Users
-
 @app.route("/users", methods=['GET'])
 def get_users():
     try:
@@ -142,8 +151,6 @@ def get_users():
     except Exception as e:
         return jsonify({"error": "Something went wrong", "details": str(e)}), 500
 
-
-    
 
 # update profile
 @app.route('/update-profile/<int:id>', methods=['POST'])
@@ -246,6 +253,7 @@ def fund_wallet():
             amount=amount,
             transaction_date=datetime.now(),
             balance_after_transaction=wallet.balance,
+            transaction_fee=0,
             status='completed',
             transaction_type='deposit'  # Mark this as a deposit
         )
@@ -266,9 +274,9 @@ def fund_wallet():
 @app.route('/wallet/withdraw', methods=['POST'])
 def withdraw_wallet():
     data = request.json
+    user_id=data.get('user_id')
     wallet_id = data.get('wallet_id')
     amount = data.get('amount')
-    print(amount)
 
     wallet = Wallet.query.filter_by(wallet_id=wallet_id).first()
     if wallet and wallet.balance >= amount:  # Ensure there's enough balance to withdraw
@@ -278,11 +286,13 @@ def withdraw_wallet():
 
             # Record the transaction
             transaction = Transaction(
+                user_id=user_id,
                 sender_wallet_id=wallet.wallet_id,  # The wallet is the sender
                 receiver_wallet_id=None,  # No receiver for a withdrawal (or could be an external account)
                 amount=amount,
                 transaction_date=datetime.now(),
                 balance_after_transaction=wallet.balance,
+                transaction_fee=0,
                 transaction_type='withdrawal'  # Mark this as a withdrawal
             )
 
@@ -333,7 +343,6 @@ def handle_transaction():
         sender_wallet = Wallet.query.filter_by(wallet_id=sender_wallet_id).first()
     else:
         sender_wallet = Wallet.query.filter_by(user_id=user_id).first()
-    print(sender_wallet.balance)
 
     if not sender_wallet:
         return jsonify({"error": "Sender wallet not found"}), 404
@@ -341,14 +350,16 @@ def handle_transaction():
     # Fetch receiver wallet
     if receiver_wallet_id:
         receiver_wallet = Wallet.query.filter_by(wallet_id=receiver_wallet_id).first()
-    elif beneficiary_email:
+    else: 
+        beneficiary_email
         beneficiary = Beneficiary.query.filter_by(beneficiary_email=beneficiary_email).first()
         if not beneficiary:
             return jsonify({"error": "Beneficiary not found or inactive"}), 404
         beneficiary_user=User.query.filter_by(email=beneficiary_email).first()
         receiver_wallet = Wallet.query.filter_by(user_id=beneficiary_user.user_id).first()
 
-    print(beneficiary_user.username)
+    
+
 
     if not receiver_wallet:
         return jsonify({"error": "Receiver wallet not found"}), 404
@@ -382,20 +393,38 @@ def handle_transaction():
         # db.session.commit()
 
         # Create transaction record
-        transaction = Transaction(
+        sender_transaction = Transaction(
                 user_id=user_id,
                 sender_wallet_id=sender_wallet.wallet_id,
                 receiver_wallet_id=receiver_wallet.wallet_id,
                 amount=amount,
                 transaction_fee=transaction_fee,
                 description=description,
-                transaction_type="Transfer"
+                transaction_type="Transfer",
+                balance_after_transaction=sender_wallet.balance,
+                recipient_email=beneficiary_user.email
+            )
+        
+        db.session.add(sender_transaction)
+        db.session.commit()
+        
+        
+        receiver_transaction = Transaction(
+                user_id=beneficiary_user.user_id,
+                sender_wallet_id=sender_wallet.wallet_id,
+                receiver_wallet_id=receiver_wallet.wallet_id,
+                amount=amount,
+                transaction_fee=transaction_fee,
+                description=description,
+                transaction_type="Transfer",
+                balance_after_transaction=receiver_wallet.balance
             )
 
-        db.session.add(transaction)
+
+        db.session.add(receiver_transaction)
         db.session.commit()
 
-        return jsonify(transaction.to_dict()), 201
+        return jsonify(sender_transaction.to_dict()), 201
 
     except SQLAlchemyError as e:
         db.session.rollback()
