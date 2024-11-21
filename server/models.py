@@ -53,7 +53,6 @@ class User(db.Model):
 
     @validates('phone_number')
     def validate_phone_number(self, key, value):
-        # Refined regex to match Kenyan phone number formats
         phone_regex = r'^(?:\+2547|07|01)\d{8}$'
         if not re.match(phone_regex, value):
             raise ValueError("Invalid phone number. Must be in the format +2547XXXXXXXX, 07XXXXXXXX, or 01XXXXXXXX.")
@@ -152,7 +151,7 @@ class Transaction(db.Model):
 
     transaction_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     sender_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=True)
-    receiver_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=False)
+    receiver_wallet_id = db.Column(db.Integer, db.ForeignKey('wallets.wallet_id'), nullable=True)
     recipient_email = db.Column(db.String(100), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     amount = db.Column(db.Float, nullable=False) 
