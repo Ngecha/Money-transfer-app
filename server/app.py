@@ -14,7 +14,7 @@ import os
 #create app
 app= Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
-app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///app.db"
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
@@ -24,7 +24,7 @@ load_dotenv()
 
 # Flask-Mail configuration using environment variables
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT'))
+app.config['MAIL_PORT'] = os.getenv('MAIL_PORT')
 app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS') == 'True'
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
@@ -287,6 +287,7 @@ def fund_wallet():
         db.session.add(transaction)
         db.session.commit()
 
+        user=User.query.filter_by(user_id=user_id).first()
         # Send email notification
         send_email(
             subject="Wallet Funded Successfully!",
@@ -337,6 +338,7 @@ def withdraw_wallet():
             db.session.add(transaction)
             db.session.commit()
 
+            user=User.query.filter_by(user_id=user_id).first()
             # Send email notification
             send_email(
                 subject="Withdrawal Successful!",
@@ -460,6 +462,7 @@ def handle_transaction():
         db.session.add(sender_transaction)
         db.session.commit()
 
+        user=User.query.filter_by(user_id=user_id).first()
         # Add email notification
         send_email(
             subject="Transaction Successful!",
