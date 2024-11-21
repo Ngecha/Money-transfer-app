@@ -8,6 +8,8 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 from flask_login import UserMixin
 from functools import wraps
+from dotenv import load_dotenv
+import os
 import bcrypt
 from db import db
 
@@ -20,13 +22,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
-# Configure Flask-Mail
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'  # Replace with your mail server
-app.config['MAIL_PORT'] = 587  # Common port for TLS
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'nickkorir08@gmail.com'  # Your email address
-app.config['MAIL_PASSWORD'] = 'dvsa oack vhge avbh'  # Your email password or app-specific password
-app.config['MAIL_DEFAULT_SENDER'] = 'nickkorir08@gmail.com'
+load_dotenv()
+
+# Flask-Mail configuration using environment variables
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT'))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS') == 'True'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 
 
 #initialize extentions with the app
@@ -118,7 +122,7 @@ def register():
         db.session.add(new_user)
         db.session.commit()
 
-        new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0, currency="USD")
+        new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0, currency="KES")
         db.session.add(new_wallet)
         db.session.commit()
 
@@ -305,8 +309,8 @@ def fund_wallet():
             recipient=user.email,
             body=(
                 f"Hi {user.username},\n\n"
-                f"You have successfully funded your wallet with ${amount:.2f}.\n"
-                f"New Balance: ${wallet.balance:.2f}\n\n"
+                f"You have successfully funded your wallet with KES{amount:.2f}.\n"
+                f"New Balance: KES{wallet.balance:.2f}\n\n"
                 "Thank you for using our service."
             )
         )
@@ -362,8 +366,8 @@ def withdraw_wallet():
             recipient=user.email,
             body=(
                 f"Hi {user.username},\n\n"
-                f"You have successfully withdrawn ${amount:.2f} from your wallet.\n"
-                f"New Balance: ${wallet.balance:.2f}\n\n"
+                f"You have successfully withdrawn KES{amount:.2f} from your wallet.\n"
+                f"New Balance: KES{wallet.balance:.2f}\n\n"
                 "Thank you for using our service."
             )
         )
@@ -468,9 +472,9 @@ def handle_transaction():
             recipient=user.email,
             body=(
                 f"Hi {user.username},\n\n"
-                f"You sent ${amount:.2f} to {beneficiary_email}.\n"
-                f"Transaction Fee: ${transaction_fee:.2f}\n"
-                f"Remaining Balance: ${sender_wallet.balance:.2f}\n\n"
+                f"You sent KES{amount:.2f} to {beneficiary_email}.\n"
+                f"Transaction Fee: KES{transaction_fee:.2f}\n"
+                f"Remaining Balance: KES{sender_wallet.balance:.2f}\n\n"
                 "Thank you for using our service."
             )
         )
@@ -547,9 +551,9 @@ def reverse_transaction(transaction_id):
             recipient=user.email,
             body=(
                 f"Hi {user.username},\n\n"
-                f"Your transaction of ${transaction.amount:.2f} to {receiver_wallet.user.email} "
+                f"Your transaction of KES{transaction.amount:.2f} to {receiver_wallet.user.email} "
                 f"has been successfully reversed.\n"
-                f"Your updated balance is ${sender_wallet.balance:.2f}.\n\n"
+                f"Your updated balance is KES{sender_wallet.balance:.2f}.\n\n"
                 "Thank you for using our service."
             )
         )
