@@ -1,8 +1,8 @@
-"""Initial migration
+"""initial Migration
 
-Revision ID: 267ad00f0f7d
+Revision ID: d594cbd05c1e
 Revises: 
-Create Date: 2024-11-20 20:07:38.089468
+Create Date: 2024-11-21 13:25:35.609155
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '267ad00f0f7d'
+revision = 'd594cbd05c1e'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -59,8 +59,7 @@ def upgrade():
     sa.Column('added_at', sa.DateTime(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.user_id'], ),
-    sa.PrimaryKeyConstraint('beneficiary_id'),
-    sa.UniqueConstraint('beneficiary_email')
+    sa.PrimaryKeyConstraint('beneficiary_id')
     )
     op.create_table('wallets',
     sa.Column('wallet_id', sa.Integer(), nullable=False),
@@ -76,7 +75,7 @@ def upgrade():
     op.create_table('transactions',
     sa.Column('transaction_id', sa.String(length=36), nullable=False),
     sa.Column('sender_wallet_id', sa.Integer(), nullable=True),
-    sa.Column('receiver_wallet_id', sa.Integer(), nullable=False),
+    sa.Column('receiver_wallet_id', sa.Integer(), nullable=True),
     sa.Column('recipient_email', sa.String(length=100), nullable=True),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('amount', sa.Float(), nullable=False),
