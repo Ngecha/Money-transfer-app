@@ -127,7 +127,7 @@ class Beneficiary(db.Model):
 
     beneficiary_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
-    beneficiary_email = db.Column(db.String(100), nullable=False, unique=True)
+    beneficiary_email = db.Column(db.String(100), nullable=False, unique=False)
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
 

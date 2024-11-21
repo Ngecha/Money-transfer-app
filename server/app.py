@@ -392,8 +392,8 @@ def handle_transaction():
                 transaction_fee=transaction_fee,
                 description=description,
                 transaction_type="Transfer"
-                balance_after_transaction=walle
-            )
+                
+                )
 
         db.session.add(transaction)
         db.session.commit()
@@ -409,16 +409,49 @@ def handle_transaction():
 @app.route('/transactions/<int:id>', methods=['GET'])
 def get_transactions(id):
     user = db.session.get(User, id)
-    if user:
-        if user.wallet:  # Ensure the user has a wallet
-            transactions = Transaction.query.filter(
-                (Transaction.sender_wallet_id == user.wallet.wallet_id) |
-                (Transaction.receiver_wallet_id == user.wallet.wallet_id)
-            ).all()
-            return jsonify([transaction.to_dict() for transaction in transactions]), 200
-        else:
-            return jsonify({"error": "User does not have an associated wallet!"}), 404
-    return jsonify({"error": "User not found!"}), 404
+    if not user:
+        return jsonify({"error": "User not found!"}), 404
+
+    if not user.wallet:
+        return jsonify({"error": "User does not have an associated wallet!"}), 404
+
+    # Query parameters for filtering, searching, and pagination
+    search_query = request.args.get('search', '').lower()
+    status_filter = request.args.get('status', 'all')
+    date_range = request.args.get('date_range', 'all')
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 10))
+
+    # Base query for transactions
+    transactions_query = Transaction.query.filter(
+        (Transaction.sender_wallet_id == user.wallet.wallet_id) |
+        (Transaction.receiver_wallet_id == user.wallet.wallet_id)
+    )
+
+    # Apply filters
+    if search_query:
+        transactions_query = transactions_query.filter(
+            Transaction.description.ilike(f'%{search_query}%')
+        )
+    if status_filter != 'all':
+        transactions_query = transactions_query.filter(Transaction.status == status_filter)
+    # Example date range filtering (add implementation for 'today', 'week', etc.)
+    if date_range != 'all':
+        pass
+
+    # Pagination
+    paginated_transactions = transactions_query.paginate(page=page, per_page=per_page, error_out=False)
+
+    # Convert transactions to dictionary
+    transactions = [transaction.to_dict() for transaction in paginated_transactions.items]
+
+    return jsonify({
+        "transactions": transactions,
+        "total": paginated_transactions.total,
+        "pages": paginated_transactions.pages,
+        "current_page": paginated_transactions.page
+    }), 200
+
 
 ### BENEFICIARY ROUTES ###
 # Route to add a beneficiary
@@ -547,25 +580,25 @@ def get_transaction_history():
         return jsonify({'message': 'User does not have an associated wallet!'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+    #ANALYTICS
+@app.route('/transactions/analytics/<int:id>', methods=['GET'])
+def get_transaction_summary(id):
+    user = User.query.get(id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
 
-### ANALYTICS ROUTES ###
+    sent_count = Transaction.query.filter_by(sender_wallet_id=user.wallet.wallet_id).count()
+    received_count = Transaction.query.filter_by(receiver_wallet_id=user.wallet.wallet_id).count()
+    failed_count = Transaction.query.filter_by(status='Failed', sender_wallet_id=user.wallet.wallet_id).count()
+    pending_count = Transaction.query.filter_by(status='Pending', sender_wallet_id=user.wallet.wallet_id).count()
 
-# Admin Route: Transaction Summary
-@app.route('/admin/transaction-summary', methods=['GET'])
-def get_transaction_summary():
-    user = User.query.get(session['user_id'])
-    if not user.is_admin:
-        return jsonify({'message': 'Unauthorized access'}), 403
-
-    summary = TransactionSummary.query.all() 
-    return jsonify([summary_item.to_dict() for summary_item in summary]), 200
-
-# Admin Route: User Analytics 
-@app.route('/admin/user-analytics', methods=['GET'])
-def get_user_analytics():
-    user_id = request.args.get('user_id')
-    analytics = Analytics.query.filter_by(user_id=user_id).all()
-    return jsonify([analytic.to_dict() for analytic in analytics]), 200
+    return jsonify({
+        'sent_count': sent_count,
+        'received_count': received_count,
+        'failed_count': failed_count,
+        'pending_count': pending_count
+    })
 
 # Run the Flask app
 if __name__ == "__main__":
