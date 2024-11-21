@@ -7,7 +7,9 @@ from werkzeug.utils import secure_filename
 import bcrypt
 from db import db
 from flask_cors import CORS
-
+from flask_mail import Mail, Message
+from dotenv import load_dotenv
+import os
 
 #create app
 app= Flask(__name__)
@@ -18,10 +20,20 @@ app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_images'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
 CORS(app)
+load_dotenv()
+
+# Flask-Mail configuration using environment variables
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT'))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS') == 'True'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 
 #initialize extentions with the app
 db.init_app(app)
 migrate = Migrate(app, db)
+mail = Mail(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -36,7 +48,14 @@ login_manager.login_view = 'login'
 
 
 
-
+# Flask-Mail helper function
+def send_email(subject, recipient, body):
+    try:
+        msg = Message(subject=subject, recipients=[recipient], body=body)
+        mail.send(msg)
+        print(f"Email sent to {recipient}")
+    except Exception as e:
+        print(f"Failed to send email: {str(e)}")
 
 
 
@@ -96,6 +115,13 @@ def register():
         new_wallet = Wallet(user_id=new_user.user_id, wallet_name="Default Wallet", balance=0.0)
         db.session.add(new_wallet)
         db.session.commit()
+
+        # Send welcome email
+        send_email(
+            subject="Welcome to Money Transfer App!",
+            recipient=email,
+            body=f"Hi {username},\n\nWelcome to Money Transfer App! Start managing your money efficiently today."
+        )
 
     except ValueError:
         return jsonify({"message": "Wrong phone number or email format"})
@@ -261,6 +287,18 @@ def fund_wallet():
         db.session.add(transaction)
         db.session.commit()
 
+        # Send email notification
+        send_email(
+            subject="Wallet Funded Successfully!",
+            recipient=user.email,
+            body=(
+                f"Hi {user.username},\n\n"
+                f"You have successfully funded your wallet with KES{amount:.2f}.\n"
+                f"New Balance: KES{wallet.balance:.2f}\n\n"
+                "Thank you for using our service."
+            )
+        )
+
         return jsonify({
             'message': 'Wallet funded successfully',
             'balance': wallet.balance,
@@ -298,6 +336,20 @@ def withdraw_wallet():
 
             db.session.add(transaction)
             db.session.commit()
+
+            # Send email notification
+            send_email(
+                subject="Withdrawal Successful!",
+                recipient=user.email,
+                body=(
+                    f"Hi {user.username},\n\n"
+                    f"You have successfully withdrawn KES{amount:.2f} from your wallet.\n"
+                    f"New Balance: KES{wallet.balance:.2f}\n\n"
+                    "Thank you for using our service."     
+            )        
+        )
+        
+        
 
             return jsonify({
                 'message': 'Withdrawal successful',
@@ -407,6 +459,19 @@ def handle_transaction():
         
         db.session.add(sender_transaction)
         db.session.commit()
+
+        # Add email notification
+        send_email(
+            subject="Transaction Successful!",
+            recipient=user.email,
+            body=(
+                f"Hi {user.username},\n\n"
+                f"You sent KES{amount:.2f} to {beneficiary_email}.\n"
+                f"Transaction Fee: KES{transaction_fee:.2f}\n"
+                f"Remaining Balance: KES{sender_wallet.balance:.2f}\n\n"
+                "Thank you for using our service."
+            )
+        )
         
         
         receiver_transaction = Transaction(
