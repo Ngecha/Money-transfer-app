@@ -10,6 +10,12 @@ from flask_cors import CORS
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
 import os
+import requests
+import base64
+import datetime
+import time
+import os
+
 
 #create app
 app= Flask(__name__)
@@ -30,6 +36,7 @@ app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 
+
 #initialize extentions with the app
 db.init_app(app)
 migrate = Migrate(app, db)
@@ -39,11 +46,107 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
 
-# from resources.mpesa import Mpesa, MpesaCallback
+#MPESA
+
+# Mpesa credentials
+CONSUMER_KEY = os.environ.get("SAF_CONSUMER_KEY")
+CONSUMER_SECRET =os.environ.get("SAF_CONSUMER_SECRET")
+PASS_KEY = os.environ.get("SAF_PASS_KEY")
+PAYBILL = os.environ.get("SHORTCODE")
+CALLBACK_URL = "https://yourdomain.com/callback"  # Replace with your callback URL
+BASE_URL = "https://sandbox.safaricom.co.ke"  # Change to production URL when live
 
 
-# api.add_resource(Mpesa, "/payment")
-# api.add_resource(MpesaCallback, '/mpesa-callback')
+# Helper function to get access token
+def get_access_token():
+    try:
+        # Generate Base64 encoded credentials
+        credentials = f"{CONSUMER_KEY}:{CONSUMER_SECRET}"
+        encoded_credentials = base64.b64encode(credentials.encode()).decode()
+
+        # Request access token
+        url = f"{BASE_URL}/oauth/v1/generate?grant_type=client_credentials"
+        headers = {"Authorization": f"Basic {encoded_credentials}"}
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            return data["access_token"]
+        else:
+            return None
+    except Exception as e:
+        print(f"Error generating access token: {e}")
+        return None
+
+
+# Helper function to get timestamp
+def mpesa_timestamp():
+    return datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+
+
+# Route for STK Push
+@app.route("/payments/stk_push", methods=["POST"])
+def stk_push():
+    amount = request.json.get("amount", 1)  # Default amount is 1
+    user_id=request.json.get('user_id')
+
+    user=User.query.filter_by(user_id=user_id).first()
+    phone_number=user.phone_number
+
+    def convert_phone_number_to_new_format(phone_number):
+        # Remove the leading `+` if it exists
+        if phone_number.startswith('+'):
+            phone_number = phone_number[1:]
+
+        # Handle different prefixes
+        if phone_number.startswith('2547') or phone_number.startswith('2541'):
+        # Already in the correct country format, just return it
+            return phone_number
+        elif phone_number.startswith('07') or phone_number.startswith('01'):
+        # Replace the leading '0' with '254'
+            return '254' + phone_number[1:]
+
+     # If it doesn't match any expected patterns, return the number as is
+        return phone_number
+
+    phone=convert_phone_number_to_new_format(phone_number)
+
+    timestamp = mpesa_timestamp()
+    password = base64.b64encode(f"{PAYBILL}{PASS_KEY}{timestamp}".encode()).decode()
+
+    # Prepare the STK Push payload
+    payload = {
+        "BusinessShortCode": PAYBILL,
+        "Password": password,
+        "Timestamp": timestamp,
+        "TransactionType": "CustomerPayBillOnline",
+        "Amount": amount,
+        "PartyA": phone,
+        "PartyB": PAYBILL,
+        "PhoneNumber": phone,
+        "CallBackURL": CALLBACK_URL,
+        "AccountReference": "VisaPay",
+        "TransactionDesc": "Payment of X",
+    }
+
+    # Get access token
+    token = get_access_token()
+    if not token:
+        return jsonify({"error": "Failed to get access token"}), 500
+
+    # Send STK Push request
+    url = f"{BASE_URL}/mpesa/stkpush/v1/processrequest"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        return jsonify(response.json()), 200
+    else:
+        return jsonify({"error": "Failed to initiate STK Push", "details": response.text}), response.status_code
+
 
 
 
