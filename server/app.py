@@ -81,7 +81,7 @@ def get_access_token():
 
 # Helper function to get timestamp
 def mpesa_timestamp():
-    return datetime.now().strftime("%Y%m%d%H%M%S")
+    return datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
 # Route for STK Push
@@ -380,7 +380,7 @@ def fund_wallet():
             recipient_email=None,  
             user_id=user_id, 
             amount=amount,
-            transaction_date=datetime.now(),
+            transaction_date=datetime.datetime.now(),
             balance_after_transaction=wallet.balance,
             transaction_fee=0,
             status='completed',
