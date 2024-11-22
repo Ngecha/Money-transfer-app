@@ -81,7 +81,7 @@ def get_access_token():
 
 # Helper function to get timestamp
 def mpesa_timestamp():
-    return datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    return datetime.now().strftime("%Y%m%d%H%M%S")
 
 
 # Route for STK Push
